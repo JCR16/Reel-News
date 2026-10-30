@@ -1,0 +1,14 @@
+# Python virtual environments
+.venv/
+
+# Python generated files
+__pycache__/
+*.pyc
+
+# Local secrets and configuration
+.env
+.env.*
+!.env.example
+
+# django sqlite file (irrelevant because we use postgres)
+db.sqlite3
