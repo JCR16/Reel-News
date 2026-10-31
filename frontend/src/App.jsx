@@ -4,12 +4,51 @@ import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import './App.css'
 
+const articles = [
+  {
+    id: 1,
+    title: "Breaking News: Technology is Changing the World",
+    description: "Discover the latest developments in technology and how they affect our everyday lives.",
+    category: "Technology",
+    image: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200"
+  },
+  {
+    id: 2,
+    title: "The Future of Artificial Intelligence",
+    description: "A closer look at how AI is transforming industries around the world.",
+    category: "Science",
+    image: "https://images.unsplash.com/photo-1677442136019-21780ecad995?w=1200"
+  },
+  {
+    id: 3,
+    title: "What's Happening Around the World?",
+    description: "Stay informed with the latest international headlines.",
+    category: "World News",
+    image: "https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=1200"
+  }
+];
+
 function App() {
   const [count, setCount] = useState(0)
 
   return (
     <>
       <section id="center">
+        <div className="feed">
+      {articles.map((article) => (
+        <section
+          className="article-card"
+          key={article.id}
+          style={{ backgroundImage: `url(${article.image})` }}
+        >
+          <div className="article-content">
+            <span className="category">{article.category}</span>
+            <h1>{article.title}</h1>
+            <p>{article.description}</p>
+          </div>
+        </section>
+      ))}
+    </div>
         <div className="hero">
           <img src={heroImg} className="base" width="170" height="179" alt="" />
           <img src={reactLogo} className="framework" alt="React logo" />
@@ -116,7 +155,7 @@ function App() {
       <div className="ticks"></div>
       <section id="spacer"></section>
     </>
-  )
+  );
 }
 
 export default App
