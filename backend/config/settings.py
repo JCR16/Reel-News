@@ -97,11 +97,6 @@ DATABASES = {
     }
 }
 
-from django.db import connection # Django's configured database connection
-connection.ensure_connection() # Attempts to establish connection (using credentials in .env)
-print("Connected to PostgreSQL!") # Confirms connection succeeded if no error occured
-
-
 # Password validation
 # https://docs.djangoproject.com/en/6.1/ref/settings/#auth-password-validators
 
@@ -136,7 +131,17 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        "OPTIONS": {
+            "location": STATIC_ROOT,
+        },
+    },
+}
 
 
 # Email
