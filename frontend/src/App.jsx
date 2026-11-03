@@ -1,10 +1,26 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import heroImg from './assets/hero.png'
 import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import './App.css'
 
+import { getHealth } from "./api/health";
+
 function App() {
+
+  const [apiMessage, setApiMessage] = useState("Connecting to Django...");
+
+  useEffect(() => {
+    getHealth()
+      .then((data) => {
+        setApiMessage(data.message);
+      })
+      .catch((error) => {
+        console.error("API Error:", error);
+        setApiMessage("Failed to connect to Django");
+      });
+  }, []);
+
   const [count, setCount] = useState(0)
 
   return (
@@ -19,6 +35,8 @@ function App() {
           <h1>Get started</h1>
           <p>
             Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
+            <br />
+            Django API: {apiMessage}
           </p>
         </div>
         <button
