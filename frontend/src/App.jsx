@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { BrowserRouter, Link, Route, Routes } from 'react-router-dom'
+import ArticleBridge from './articleBridge'
 import heroImg from './assets/hero.png'
 import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
@@ -21,9 +23,9 @@ const articles = [
   },
   {
     id: 3,
-    title: "What's Happening Around the World?",
-    description: "Stay informed with the latest international headlines.",
-    category: "World News",
+    title: "Current Midterms Spark Conversation Across the Nation",
+    description: "Stay informed on the latest political landscape.",
+    category: "National News",
     image: "https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=1200"
   }
 ];
@@ -33,6 +35,10 @@ function App() {
 
   return (
     <>
+    <BrowserRouter>
+    <Routes>
+      <Route path="/" element={<App />} />
+    </Routes>
       <section id="center">
         <div className="feed">
       {articles.map((article) => (
@@ -42,12 +48,19 @@ function App() {
           style={{ backgroundImage: `url(${article.image})` }}
         >
           <div className="article-content">
-            <span className="category">{article.category}</span>
+            {/* Added a button with a link that is attached to each article category */}
+            <Link to="/some-path">
+              <button onClick = { () => window.open("https://tracker.gg/valorant/profile/riot/SandToast%23Bread/overview?platform=pc&playlist=competitive&season=d816f426-48ea-f052-117f-9697a155b319", "_blank")}>
+                <span className="category">{article.category}</span>
+              </button>
+            </Link>
             <h1>{article.title}</h1>
             <p>{article.description}</p>
+            {article.link}
           </div>
         </section>
       ))}
+
     </div>
         <div className="hero">
           <img src={heroImg} className="base" width="170" height="179" alt="" />
@@ -64,7 +77,7 @@ function App() {
           type="button"
           className="counter"
           onClick={() => setCount((count) => count + 1)}
-        >
+          >
           Count is {count}
         </button>
       </section>
@@ -154,6 +167,7 @@ function App() {
 
       <div className="ticks"></div>
       <section id="spacer"></section>
+      </BrowserRouter>
     </>
   );
 }
