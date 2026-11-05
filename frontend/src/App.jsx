@@ -37,7 +37,7 @@ function App() {
     <>
     <BrowserRouter>
     <Routes>
-      <Route path="/" element={<App />} />
+      <Route path="/ " element={<App />} />
     </Routes>
       <section id="center">
         <div className="feed">
@@ -49,8 +49,9 @@ function App() {
         >
           <div className="article-content">
             {/* Added a button with a link that is attached to each article category */}
-            <Link to="/some-path">
-              <button onClick = { () => window.open("https://tracker.gg/valorant/profile/riot/SandToast%23Bread/overview?platform=pc&playlist=competitive&season=d816f426-48ea-f052-117f-9697a155b319", "_blank")}>
+            <Link to="/ ">
+              <button onClick = { () => window.open("https://tracker.gg/valorant/profile/riot/SandToast%23Bread/overview?platform=pc&playlist=competitive&season=d816f426-48ea-f052-117f-9697a155b319", "_blank")}
+                 style={{ cursor: "pointer", height: '33px'}}>
                 <span className="category">{article.category}</span>
               </button>
             </Link>
