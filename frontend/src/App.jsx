@@ -55,7 +55,7 @@ function AppContent() {
 
             <div className="article-action">
               <Link to="/" onClick={handleCategoryClick}>
-                <button type="button" style={{ cursor: "pointer", height: '33px' }}>
+                <button type="button" style={{ cursor: "pointer", height: '33px', backgroundColor: 'transparent'}}>
                   <span className="category">{article.category}</span>
                 </button>
               </Link>
