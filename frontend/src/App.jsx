@@ -1,9 +1,12 @@
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom'
 import ArticleBridge from './articleBridge'
 import './App.css'
+import { useEffect, useState } from "react";
 
 import { getHealth } from "./api/health";
+import { getStories } from "./api/stories";
 
+/*
 const articles = [
   {
     id: 1,
@@ -27,8 +30,29 @@ const articles = [
     image: "https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=1200"
   }
 ];
+*/
+const storyImages = {
+    1: "https://images.unsplash.com/photo-1603484477859-abe6a73f9366?w=1200",
+    2: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200",
+    3: "https://images.unsplash.com/photo-1677442136019-21780ecad995?w=1200",
+    4: "https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=1200"
+};
 
 function AppContent() {
+
+  // State to hold the fetched stories
+  const [stories, setStories] = useState([]); // setStories is set to be the function to update the stories state (this is the only definition)
+  // Fetch stories when the component mounts
+    useEffect(() => {
+        getStories()
+            .then(data => {
+              console.log("Stories from Django:", data);
+              setStories(data);
+            })
+            .catch(error => console.error(error));
+    }, []);
+
+
   
   const handleCategoryClick = (e) => {
     e.preventDefault();
@@ -42,21 +66,23 @@ function AppContent() {
   return (
     <section id="center">
       <div className="feed">
-        {articles.map((article) => (
+        {stories.map((story) => (
           <section
             className="article-card"
-            key={article.id}
-            style={{ backgroundImage: `url(${article.image})` }}
+            key={story.id}
+            style={{ //backgroundImage: `url(${article.image})` 
+                backgroundImage: `url(${storyImages[story.id] || storyImages[1]})`
+              }}
           >
             <div className="article-text">
-              <h1>{article.title}</h1>
-              <p>{article.description}</p>
+              <h1>[{story.status}] {story.headline}</h1>
+              <p>{story.summary}</p>
             </div>
 
             <div className="article-action">
               <Link to="/" onClick={handleCategoryClick}>
                 <button type="button" style={{ cursor: "pointer", height: '33px' }}>
-                  <span className="category">{article.category}</span>
+                  <span className="category">Sources</span>
                 </button>
               </Link>
             </div>
