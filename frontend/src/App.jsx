@@ -31,27 +31,27 @@ const articles = [
   }
 ];
 */
-const storyImages = {
-    1: "https://images.unsplash.com/photo-1603484477859-abe6a73f9366?w=1200",
-    2: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200",
-    3: "https://images.unsplash.com/photo-1677442136019-21780ecad995?w=1200",
-    4: "https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=1200"
-};
+const defaultImage = "https://images.unsplash.com/photo-1603484477859-abe6a73f9366?w=1200";
 
 function AppContent() {
 
   // State to hold the fetched stories
   const [stories, setStories] = useState([]); // setStories is set to be the function to update the stories state (this is the only definition)
+  // State to track loading status
+  const [loading, setLoading] = useState(true);
   // Fetch stories when the component mounts
     useEffect(() => {
-        getStories()
-            .then(data => {
-              console.log("Stories from Django:", data);
+      getStories()
+          .then(data => {
               setStories(data);
-            })
-            .catch(error => console.error(error));
-    }, []);
-
+          })
+          .catch(error => {
+              console.error("Failed to load stories:", error);
+          })
+          .finally(() => {
+              setLoading(false); // data has been fetched or django errored, so we can set loading to false
+          });
+  }, []);
 
   
   const handleCategoryClick = (e) => {
@@ -66,12 +66,16 @@ function AppContent() {
   return (
     <section id="center">
       <div className="feed">
-        {stories.map((story) => (
+        { loading ? (
+          <p>Loading stories...</p>
+        ) : (
+        stories.map((story) => (
           <section
             className="article-card"
             key={story.id}
             style={{ //backgroundImage: `url(${article.image})` 
-                backgroundImage: `url(${storyImages[story.id] || storyImages[1]})`
+                backgroundImage: `url(${story.image || defaultImage}),
+                url("${defaultImage}")` // stack background images in case story.image is invalid or missing, the default image will be used as a fallback
               }}
           >
             <div className="article-text">
@@ -87,7 +91,8 @@ function AppContent() {
               </Link>
             </div>
           </section>
-        ))}
+        ))
+        )}
       </div>
     </section>
   );

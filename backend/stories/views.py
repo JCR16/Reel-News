@@ -6,7 +6,7 @@ from .models import Story, StoryRevision
 
 @api_view(["GET"])
 def get_stories(request):
-    stories = Story.objects.all()
+    stories = Story.objects.order_by("storyid") # Could use ("-datemodified","-storyid") to order by most recently modified stories first
     results = []
 
     for story in stories:
@@ -23,6 +23,7 @@ def get_stories(request):
             "headline": revision.headline,
             "summary": revision.summary,
             "status": story.status,
+            "image": story.imageurl,
         })
 
     return Response(results)

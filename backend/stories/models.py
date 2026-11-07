@@ -21,7 +21,17 @@ class Story(models.Model):
         blank=True,
         null=True,
     )
-    status = models.CharField(max_length=30, blank=True, null=True)
+    status = models.CharField(
+        max_length=30,
+        blank=True,
+        null=True
+    )
+    imageurl = models.URLField(
+        db_column="imageURL",
+        max_length=2048,
+        blank=True,
+        null=True
+    )
 
     class Meta:
         managed = False
