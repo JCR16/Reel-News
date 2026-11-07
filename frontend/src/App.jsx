@@ -31,12 +31,7 @@ const articles = [
   }
 ];
 */
-const storyImages = {
-    1: "https://images.unsplash.com/photo-1603484477859-abe6a73f9366?w=1200",
-    2: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200",
-    3: "https://images.unsplash.com/photo-1677442136019-21780ecad995?w=1200",
-    4: "https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=1200"
-};
+const defaultImage = "https://images.unsplash.com/photo-1603484477859-abe6a73f9366?w=1200";
 
 function AppContent() {
 
@@ -71,7 +66,8 @@ function AppContent() {
             className="article-card"
             key={story.id}
             style={{ //backgroundImage: `url(${article.image})` 
-                backgroundImage: `url(${storyImages[story.id] || storyImages[1]})`
+                backgroundImage: `url(${story.image || defaultImage}),
+                url("${defaultImage}")` // stack background images in case story.image is invalid or missing, the default image will be used as a fallback
               }}
           >
             <div className="article-text">
