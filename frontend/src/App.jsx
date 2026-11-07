@@ -37,16 +37,21 @@ function AppContent() {
 
   // State to hold the fetched stories
   const [stories, setStories] = useState([]); // setStories is set to be the function to update the stories state (this is the only definition)
+  // State to track loading status
+  const [loading, setLoading] = useState(true);
   // Fetch stories when the component mounts
     useEffect(() => {
-        getStories()
-            .then(data => {
-              console.log("Stories from Django:", data);
+      getStories()
+          .then(data => {
               setStories(data);
-            })
-            .catch(error => console.error(error));
-    }, []);
-
+          })
+          .catch(error => {
+              console.error("Failed to load stories:", error);
+          })
+          .finally(() => {
+              setLoading(false); // data has been fetched or django errored, so we can set loading to false
+          });
+  }, []);
 
   
   const handleCategoryClick = (e) => {
@@ -61,7 +66,10 @@ function AppContent() {
   return (
     <section id="center">
       <div className="feed">
-        {stories.map((story) => (
+        { loading ? (
+          <p>Loading stories...</p>
+        ) : (
+        stories.map((story) => (
           <section
             className="article-card"
             key={story.id}
@@ -83,7 +91,8 @@ function AppContent() {
               </Link>
             </div>
           </section>
-        ))}
+        ))
+        )}
       </div>
     </section>
   );
