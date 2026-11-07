@@ -37,8 +37,6 @@ function AppContent() {
 
   // State to hold the fetched stories
   const [stories, setStories] = useState([]); // setStories is set to be the function to update the stories state (this is the only definition)
-  // State to track loading status
-  const [loading, setLoading] = useState(true);
   // Fetch stories when the component mounts
     useEffect(() => {
       getStories()
@@ -66,10 +64,10 @@ function AppContent() {
   return (
     <section id="center">
       <div className="feed">
-        { loading ? (
+        <div className="feed-loading">
           <p>Loading stories...</p>
-        ) : (
-        stories.map((story) => (
+        </div>
+        {stories.map((story) => (
           <section
             className="article-card"
             key={story.id}
@@ -91,8 +89,7 @@ function AppContent() {
               </Link>
             </div>
           </section>
-        ))
-        )}
+        ))}
       </div>
     </section>
   );
