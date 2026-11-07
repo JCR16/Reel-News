@@ -37,10 +37,16 @@ function AppContent() {
 
   // State to hold the fetched stories
   const [stories, setStories] = useState([]); // setStories is set to be the function to update the stories state (this is the only definition)
+  // State to track loading status
+  const [error, setError] = useState(false); 
   // Fetch stories when the component mounts
   useEffect(() => {
     let cancelled = false;
     let retryTimer;
+    let retryCount = 0;
+
+    const RETRY_DELAY = 5000; // 5 seconds
+    const MAX_RETRIES = 5;
 
     const fetchStories = async () => {
       try {
@@ -48,13 +54,19 @@ function AppContent() {
 
         if (!cancelled) {
           setStories(data);
-          setLoading(false);
         }
       } catch (error) {
-        if (!cancelled) {
-          console.error("Failed to load stories, retrying...", error);
+        if (cancelled) return;
 
-          retryTimer = setTimeout(fetchStories, 5000);
+        console.error("Failed to load stories:", error);
+
+        if (retryCount < MAX_RETRIES) {
+          retryCount++;
+          console.log(`Retrying... (${retryCount}/${MAX_RETRIES})`);
+
+          retryTimer = setTimeout(fetchStories, RETRY_DELAY);
+        } else {
+          setError(true);
         }
       }
     };
@@ -81,7 +93,11 @@ function AppContent() {
     <section id="center">
       <div className="feed">
         <div className="feed-loading">
-          <p>Loading stories...</p>
+          <p>
+            {error
+              ? "Unable to load stories. Please refresh the page."
+              : "Loading stories..."}
+          </p>
         </div>
         {stories.map((story) => (
           <section
