@@ -38,17 +38,33 @@ function AppContent() {
   // State to hold the fetched stories
   const [stories, setStories] = useState([]); // setStories is set to be the function to update the stories state (this is the only definition)
   // Fetch stories when the component mounts
-    useEffect(() => {
-      getStories()
-          .then(data => {
-              setStories(data);
-          })
-          .catch(error => {
-              console.error("Failed to load stories:", error);
-          })
-          .finally(() => {
-              setLoading(false); // data has been fetched or django errored, so we can set loading to false
-          });
+  useEffect(() => {
+    let cancelled = false;
+    let retryTimer;
+
+    const fetchStories = async () => {
+      try {
+        const data = await getStories();
+
+        if (!cancelled) {
+          setStories(data);
+          setLoading(false);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Failed to load stories, retrying...", error);
+
+          retryTimer = setTimeout(fetchStories, 5000);
+        }
+      }
+    };
+
+    fetchStories();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(retryTimer);
+    };
   }, []);
 
   
