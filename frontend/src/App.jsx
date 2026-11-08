@@ -6,31 +6,6 @@ import { useEffect, useState } from "react";
 import { getHealth } from "./api/health";
 import { getStories } from "./api/stories";
 
-/*
-const articles = [
-  {
-    id: 1,
-    title: "Breaking News: Technology is Changing the World",
-    description: "Discover the latest developments in technology and how they affect our everyday lives.",
-    category: "Technology",
-    image: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200"
-  },
-  {
-    id: 2,
-    title: "The Future of Artificial Intelligence",
-    description: "A closer look at how AI is transforming industries around the world.",
-    category: "Science",
-    image: "https://images.unsplash.com/photo-1677442136019-21780ecad995?w=1200"
-  },
-  {
-    id: 3,
-    title: "Current Midterms Spark Conversation Across the Nation",
-    description: "Stay informed on the latest political landscape.",
-    category: "National News",
-    image: "https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=1200"
-  }
-];
-*/
 const defaultImage = "https://images.unsplash.com/photo-1603484477859-abe6a73f9366?w=1200";
 
 function AppContent() {
