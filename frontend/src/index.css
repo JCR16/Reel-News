@@ -1,3 +1,22 @@
+/*
+ * Reel News - Global Application Styling
+ *
+ * Developed/modified by: Reel News team
+ * Description: Defines global typography, colors, page layout,
+ * and the newspaper-themed application background.
+ *
+ * Team-developed or customized functionality:
+ * - Newspaper-themed page background and dark overlay.
+ * - Page sizing and overflow behavior for the news feed.
+ * - Global typography and responsive styling adjustments.
+ *
+ * External code/references:
+ * - None. All styling is team-developed or customized.
+ *
+ * External assets:
+ * - OldTimerNewspaper.jpg: Background image used by the application.
+ */
+
 :root {
   --text: #6b6375;
   --text-h: #08060d;

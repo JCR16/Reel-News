@@ -1,3 +1,15 @@
+/*
+ * Reel News - ESLint Configuration
+ *
+ * External code:
+ * - Generated from the standard Vite React project template.
+ * - Uses ESLint's recommended JavaScript rules and the
+ *   React Hooks and React Refresh plugins.
+ *
+ * Team modifications:
+ * - None. Original template configuration retained.
+ */
+
 import js from '@eslint/js'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
