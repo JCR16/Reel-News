@@ -1,3 +1,16 @@
+# Reel News - Story API
+#
+# Developed by: Reel News team
+# Description: Retrieves stories and their current revisions from
+# PostgreSQL and formats the results for the React frontend.
+#
+# External libraries:
+# - Django REST Framework: API request handling and responses
+#
+# External code:
+# - No third-party source code was copied or adapted.
+# - Django REST Framework is used through its public API.
+
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 

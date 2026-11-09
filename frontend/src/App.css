@@ -1,3 +1,25 @@
+/*
+ * Reel News - News Feed Styling
+ *
+ * Developed by: Reel News team
+ * Description: Defines the layout and appearance of the
+ * vertically scrolling news feed and article cards.
+ *
+ * Team-developed functionality:
+ * - Article card layout, typography, and positioning.
+ * - Background image overlay for text readability.
+ * - Responsive styling for smaller screens.
+ * - Reel News category/button appearance, subject to
+ *   attribution of any tutorial-derived styling.
+ *
+ * External code/references:
+ * - Vertical scrolling and scroll-snapping behavior adapted
+ *   from YouTube tutorials.
+ *
+ * External technologies:
+ * - Standard CSS; no additional CSS libraries used in this file.
+ */
+
 #center {
   width: 100%;
   height: 100%;

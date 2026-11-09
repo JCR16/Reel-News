@@ -1,3 +1,17 @@
+# Reel News - Story API Unit Tests
+#
+# Developed by: Reel News team
+# Description: Tests the Django story API using mocked database
+# queries to verify responses without connecting to PostgreSQL.
+#
+# External libraries:
+# - Django SimpleTestCase: Unit testing framework.
+# - Django REST Framework APIRequestFactory: Simulated HTTP requests.
+# - Python unittest.mock: Mock database queries and model objects.
+#
+# External code:
+# - No third-party source code copied or adapted.
+
 from django.test import SimpleTestCase
 from rest_framework.test import APIRequestFactory
 from unittest.mock import patch, MagicMock
@@ -18,6 +32,13 @@ class StoryAPITests(SimpleTestCase):
 
         # Call the API view
         response = get_stories(request)
+
+        # Verify the API handles an empty database correctly
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [])
+
+        # Verify the expected database query was called
+        mock_order_by.assert_called_once_with("storyid")
 
 
     @patch("stories.views.StoryRevision.objects.filter")
@@ -61,3 +82,7 @@ class StoryAPITests(SimpleTestCase):
         }])
 
         # Verify Django looked up the correct revision
+        mock_filter.assert_called_once_with(
+            storyid_id=1,
+            revisionnum=1
+        )

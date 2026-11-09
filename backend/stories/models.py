@@ -1,5 +1,21 @@
-from django.db import models
+# Reel News - Database Models
+#
+# Developed by: Reel News team
+# Description: Defines Django ORM models for the Story and
+# StoryRevision tables in the team's PostgreSQL database.
+#
+# Database schema:
+# - Designed and implemented by the Reel News team.
+# - Django models map to existing PostgreSQL tables.
+# - managed=False prevents Django from managing these tables.
+#
+# External libraries:
+# - Django ORM: Model definitions, fields, and relationships.
+#
+# External code:
+# - No third-party source code was copied or adapted.
 
+from django.db import models
 
 class Story(models.Model):
     storyid = models.IntegerField(

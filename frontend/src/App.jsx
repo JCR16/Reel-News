@@ -1,9 +1,36 @@
+/*
+ * Reel News - Main Application
+ *
+ * Developed by: Reel News team
+ * Description: Displays the news feed, retrieves stories from
+ * the Django API, and handles story navigation.
+ *
+ * Team-developed functionality:
+ * - Integration with the Django story API.
+ * - Dynamic rendering of headlines, summaries, and story status.
+ * - Story image handling and default background fallback.
+ * - API retry logic and React state management.
+ * - Integration of the news feed with React Router.
+ *
+ * External libraries:
+ * - React: UI components, state management, and effects.
+ * - React Router: Client-side navigation.
+ *
+ * External code/references:
+ * - Button styling and scrolling behavior adapted from YouTube
+ *   tutorials.
+ *
+ * External assets:
+ * - Default newspaper image hosted on Unsplash.
+ *   https://images.unsplash.com/photo-1603484477859-abe6a73f9366
+ */
+
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom'
 import ArticleBridge from './articleBridge'
 import './App.css'
 import { useEffect, useState } from "react";
 
-import { getHealth } from "./api/health";
+//import { getHealth } from "./api/health";
 import { getStories } from "./api/stories";
 
 const defaultImage = "https://images.unsplash.com/photo-1603484477859-abe6a73f9366?w=1200";
@@ -23,7 +50,6 @@ function AppContent() {
 
         if (!cancelled) {
           setStories(data);
-          setLoading(false);
         }
       } catch (error) {
         if (!cancelled) {
