@@ -13,9 +13,12 @@
 
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from django.shortcuts import render
 
 from .models import Story, StoryRevision
 
+def feed(request):
+    return render(request, "stories/feed.html")
 
 @api_view(["GET"])
 def get_stories(request):
