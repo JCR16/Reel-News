@@ -34,8 +34,7 @@
                 </div>
 
                 <div class="article-action">
-                    <a href="{{ story.image }}" class="sources-link" target="_blank" rel="noopener noreferrer">
-                        <button type="button" style="cursor: pointer; height: 33px; background: none; border: none;">
+                    <a href="{% url 'story_detail' story.id %}" class="sources-link">                        <button type="button" style="cursor: pointer; height: 33px; background: none; border: none;">
                             <span class="category">Read More</span>
                         </button>
                     </a>

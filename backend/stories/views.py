@@ -14,8 +14,23 @@
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.shortcuts import render
+from django.shortcuts import get_object_or_404
 
 from .models import Story, StoryRevision
+
+def story_detail(request, story_id):
+    story = get_object_or_404(Story, storyid=story_id)
+
+    revision = get_object_or_404(
+        StoryRevision,
+        storyid_id=story.storyid,
+        revisionnum=story.currentrevisionnum
+    )
+
+    return render(request, "stories/detail.html", {
+        "story": story,
+        "revision": revision,
+    })
 
 def feed(request):
     stories = Story.objects.order_by("storyid")

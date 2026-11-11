@@ -1,8 +1,9 @@
 from django.urls import path
-from .views import feed
+from . import views
 
 urlpatterns = [
-    path("", feed, name="feed"),
+    #path("", views.feed, name="feed"),
+    path("<int:story_id>/", views.story_detail, name="story_detail"),
 ]
 """
 urlpatterns = [
