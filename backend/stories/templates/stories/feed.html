@@ -1,4 +1,5 @@
 
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,28 +7,52 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reel News</title>
 
-    <style>
-        body {
-            background-color: #16171d;
-            color: white;
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 0;
-            padding: 60px 20px;
-        }
-
-        h1 {
-            font-size: 48px;
-        }
-
-        p {
-            color: #b0b0b0;
-            font-size: 18px;
-        }
-    </style>
+    <!-- Reel News CSS -->
+    <link rel="stylesheet" href="{% static 'stories/global.css' %}">
+    <link rel="stylesheet" href="{% static 'stories/feed.css' %}">
 </head>
+
 <body>
-    <h1>Reel News</h1>
-    <p>Our new Django frontend is working!!</p>
+    <section id="center">
+        <div class="feed">
+
+            {% for story in stories %}
+            {% if story.image %}
+                <section
+                    class="article-card"
+                    style="background-image: url('{{ story.image|escape }}'), url('https://images.unsplash.com/photo-1603484477859-abe6a73f9366?w=1200');"
+                >
+                {% else %}
+                <section
+                    class="article-card"
+                    style="background-image: url('https://images.unsplash.com/photo-1603484477859-abe6a73f9366?w=1200');"
+                >
+                {% endif %}
+                <div class="article-text">
+                    <h1>[{{ story.status }}] {{ story.headline }}</h1>
+                    <p>{{ story.summary }}</p>
+                </div>
+
+                <div class="article-action">
+                    <a href="{{ story.image }}" class="sources-link" target="_blank" rel="noopener noreferrer">
+                        <button type="button" style="cursor: pointer; height: 33px; background: none; border: none;">
+                            <span class="category">Sources</span>
+                        </button>
+                    </a>
+                </div>
+            </section>
+
+            {% empty %}
+            <section class="article-card">
+                <div class="article-text">
+                    <h1>No stories available</h1>
+                    <p>Check back soon for the latest news.</p>
+                </div>
+            </section>
+            {% endfor %}
+
+        </div>
+    </section>
 </body>
+
 </html>

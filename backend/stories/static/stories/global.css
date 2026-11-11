@@ -64,7 +64,7 @@ body {
   background-color: #e8dcc0;
   background-image:
     linear-gradient(rgba(36, 34, 27, 0.786), rgba(49, 48, 47, 0.752)),
-    url("/OldTimerNewspaper.jpg");
+    url("./OldTimerNewspaper.jpg");
   background-size: cover;
   background-position: center;
   background-attachment: fixed;
