@@ -11,15 +11,27 @@
 # - No third-party source code was copied or adapted.
 # - Django REST Framework is used through its public API.
 
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
+from django.shortcuts import render
+from django.shortcuts import get_object_or_404
 
 from .models import Story, StoryRevision
 
+def story_detail(request, story_id):
+    story = get_object_or_404(Story, storyid=story_id)
 
-@api_view(["GET"])
-def get_stories(request):
-    stories = Story.objects.order_by("storyid") # Could use ("-datemodified","-storyid") to order by most recently modified stories first
+    revision = get_object_or_404(
+        StoryRevision,
+        storyid_id=story.storyid,
+        revisionnum=story.currentrevisionnum
+    )
+
+    return render(request, "stories/detail.html", {
+        "story": story,
+        "revision": revision,
+    })
+
+def feed(request):
+    stories = Story.objects.order_by("storyid")
     results = []
 
     for story in stories:
@@ -39,4 +51,6 @@ def get_stories(request):
             "image": story.imageurl,
         })
 
-    return Response(results)
+    return render(request, "stories/feed.html", {
+        "stories": results
+    })

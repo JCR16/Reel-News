@@ -32,10 +32,13 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import include, path
+from . import views
 from .views import health_check
+from stories import views as story_views
 
 urlpatterns = [
+    path("", story_views.feed, name="feed"),
+    path("stories/", include("stories.urls")),
     path("admin/", admin.site.urls),
-    path("api/health/", health_check),
-    path("api/stories/", include("stories.urls")),
+    path("health/", health_check),
 ]

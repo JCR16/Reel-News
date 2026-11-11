@@ -1,0 +1,68 @@
+
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ revision.headline }} | Reel News</title>
+
+    <link rel="stylesheet" href="{% static 'stories/css/global.css' %}">
+</head>
+<body>
+    <main class="story-detail">
+
+        <!-- Return to the main feed -->
+        <a href="{% url 'feed' %}">← Back to Feed</a>
+
+        <!-- Story information -->
+        <article>
+            <h1>{{ revision.headline }}</h1>
+            <p>Status: {{ story.status }}</p>
+
+            <!-- Existing summary -->
+            <section>
+                <h2>Summary</h2>
+                <p>{{ revision.summary }}</p>
+            </section>
+
+            <!-- Future detailed summary -->
+            <section>
+                <h2>Full Summary</h2>
+                <p>
+                    A more detailed summary of this story
+                    will appear here.
+                </p>
+            </section>
+
+            <!-- Future source listings -->
+            <section>
+                <h2>Sources</h2>
+                <p>
+                    Original news articles will be listed here,
+                    grouped by political leaning.
+                </p>
+            </section>
+
+            <!-- Future related images -->
+            <section>
+                <h2>Related Images</h2>
+                <p>
+                    Additional images related to this story
+                    will appear here.
+                </p>
+            </section>
+
+            <!-- Future political analysis -->
+            <section>
+                <h2>Political Analysis</h2>
+                <p>
+                    An analysis comparing how different
+                    sources cover this story will appear here.
+                </p>
+            </section>
+        </article>
+
+    </main>
+</body>
+</html>

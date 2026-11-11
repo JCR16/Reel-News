@@ -1,18 +1,15 @@
-# Reel News - Story API URL Configuration
-#
-# Developed by: Reel News team
-# Description: Maps incoming story API requests to the
-# corresponding Django view.
-#
-# External libraries:
-# - Django URL routing: path() function.
-#
-# External code:
-# - No third-party source code copied or adapted.
-
 from django.urls import path
-from .views import get_stories
+from . import views
 
 urlpatterns = [
-    path("", get_stories, name="get_stories"),
+    #path("", views.feed, name="feed"),
+    path("<int:story_id>/", views.story_detail, name="story_detail"),
 ]
+"""
+urlpatterns = [
+    path("", views.feed, name="feed"),
+    path("story/<int:story_id>/", views.story_detail, name="story_detail"),
+    path("story/<int:story_id>/sources/", views.story_sources, name="story_sources"),
+    path("feed/load-more/", views.load_more, name="load_more"),
+]
+"""
