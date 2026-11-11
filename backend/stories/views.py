@@ -11,8 +11,6 @@
 # - No third-party source code was copied or adapted.
 # - Django REST Framework is used through its public API.
 
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
 from django.shortcuts import render
 from django.shortcuts import get_object_or_404
 
