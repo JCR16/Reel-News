@@ -72,6 +72,40 @@ def create_story_revision(
     return revision
 
 
+def link_revision_article(
+    story: Story,
+    revision: StoryRevision,
+    article_data: dict,
+) -> RevisionArticle:
+    """
+    Create or reuse an Article and link it to a StoryRevision.
+    """
+
+    # Retrieve the article's publisher.
+    publisher = Publisher.objects.get(
+        publisherid=article_data["publisher_id"]
+    )
+
+    # Create the Article if its content hash is new,
+    # otherwise reuse the existing record.
+    article = get_or_create_article(
+        title=article_data["title"],
+        link=article_data["link"],
+        text=article_data["text"],
+        publisher=publisher,
+    )
+
+    # Create or retrieve the relationship between
+    # the Article and this specific StoryRevision.
+    link, created = RevisionArticle.objects.get_or_create(
+        articleid=article,
+        storyid=story,
+        revisionnum=revision.revisionnum,
+    )
+
+    return link
+
+
 def generate_and_save_story(articles: list[dict]) -> Story:
     """
     Generate a story using Gemini and save it to PostgreSQL.
@@ -96,28 +130,45 @@ def generate_and_save_story(articles: list[dict]) -> Story:
             summary=generated["summary"],
         )
 
-        # Process each source article used to generate the story.
+        # Create or reuse each Article and link it to this revision.
         for article_data in articles:
-
-            # Find the publisher using its existing database ID.
-            publisher = Publisher.objects.get(
-                publisherid=article_data["publisher_id"]
-            )
-
-            # Create the Article record, or reuse it if its hash exists.
-            article = get_or_create_article(
-                title=article_data["title"],
-                link=article_data["link"],
-                text=article_data["text"],
-                publisher=publisher,
-            )
-
-            # Link this Article to the StoryRevision it contributed to.
-            RevisionArticle.objects.get_or_create(
-                articleid=article,
-                storyid=story,
-                revisionnum=revision.revisionnum,
-            )
+            link_revision_article(story, revision, article_data)
 
     # Return the newly created Story.
     return story
+
+
+def generate_and_save_revision(
+    story_id: int,
+    articles: list[dict],
+) -> StoryRevision:
+    """
+    Generate a new revision of an existing Story using
+    an updated list of source articles.
+    """
+
+    # Extract the article texts for Gemini.
+    article_texts = [article["text"] for article in articles]
+
+    # Generate the updated headline and summary.
+    generated = generate_story(article_texts)
+
+    # Create the new revision inside a database transaction.
+    with transaction.atomic():
+
+        # Lock the Story record to prevent simultaneous revision updates.
+        story = Story.objects.select_for_update().get(storyid=story_id)
+
+        # Create the next revision using Gemini's generated content.
+        revision = create_story_revision(
+            story,
+            headline=generated["headline"],
+            summary=generated["summary"],
+        )
+
+        # Create or reuse each Article and link it to this revision.
+        for article_data in articles:
+            link_revision_article(story, revision, article_data)
+
+    # Return the newly created revision.
+    return revision
