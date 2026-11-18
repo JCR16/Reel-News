@@ -18,7 +18,7 @@
 from django.db import models
 
 class Story(models.Model):
-    storyid = models.IntegerField(
+    storyid = models.AutoField(
         db_column="storyID",
         primary_key=True,
     )
@@ -54,14 +54,16 @@ class Story(models.Model):
         db_table = "story"
 
 
+
 class StoryRevision(models.Model):
     pk = models.CompositePrimaryKey("storyid", "revisionnum")
 
     storyid = models.ForeignKey(
-        Story,
-        models.DO_NOTHING,
-        db_column="storyID",
-    )
+    Story,
+    models.DO_NOTHING,
+    db_column="storyID",
+    related_name="revisions",
+)
     revisionnum = models.IntegerField(db_column="revisionNum")
     datecreated = models.DateTimeField(
         db_column="dateCreated",
@@ -79,3 +81,118 @@ class StoryRevision(models.Model):
     class Meta:
         managed = False
         db_table = "story_revision"
+
+
+
+class Publisher(models.Model):
+    publisherid = models.AutoField(
+        db_column="publisherID",
+        primary_key=True,
+    )
+    name = models.CharField(max_length=255, blank=True, null=True)
+    location = models.CharField(max_length=255, blank=True, null=True)
+    logourl = models.TextField(
+        db_column="logoURL",
+        blank=True,
+        null=True,
+    )
+    landingpage = models.TextField(
+        db_column="landingPage",
+        blank=True,
+        null=True,
+    )
+    biascategory = models.CharField(
+        db_column="biasCategory",
+        max_length=20,
+        blank=True,
+        null=True,
+    )
+    biassource = models.TextField(
+        db_column="biasSource",
+        blank=True,
+        null=True,
+    )
+
+    class Meta:
+        managed = False
+        db_table = "publisher"
+
+
+
+class Article(models.Model):
+    articleid = models.AutoField(
+        db_column="articleID",
+        primary_key=True,
+    )
+    title = models.CharField(max_length=255, blank=True, null=True)
+    link = models.TextField(blank=True, null=True)
+    dateaccessed = models.DateTimeField(
+        db_column="dateAccessed",
+        blank=True,
+        null=True,
+    )
+    datepublished = models.DateTimeField(
+        db_column="datePublished",
+        blank=True,
+        null=True,
+    )
+    lastchecked = models.DateTimeField(
+        db_column="lastChecked",
+        blank=True,
+        null=True,
+    )
+    hash = models.CharField(max_length=64, blank=True, null=True)
+    publisherid = models.ForeignKey(
+        Publisher,
+        models.DO_NOTHING,
+        db_column="publisherID",
+        related_name="articles",
+        blank=True,
+        null=True,
+    )
+    biascategory = models.CharField(
+        db_column="biasCategory",
+        max_length=20,
+        blank=True,
+        null=True,
+    )
+    biassource = models.TextField(
+        db_column="biasSource",
+        blank=True,
+        null=True,
+    )
+    aibiasscore = models.FloatField(
+        db_column="aiBiasScore",
+        blank=True,
+        null=True,
+    )
+
+    class Meta:
+        managed = False
+        db_table = "article"
+
+
+
+class RevisionArticle(models.Model):
+    pk = models.CompositePrimaryKey(
+        "articleid", "storyid", "revisionnum"
+    )
+
+    articleid = models.ForeignKey(
+        Article,
+        models.DO_NOTHING,
+        db_column="articleID",
+        related_name="revision_links",
+    )
+    storyid = models.ForeignKey(
+        Story,
+        models.DO_NOTHING,
+        db_column="storyID",
+    )
+    revisionnum = models.IntegerField(
+        db_column="revisionNum",
+    )
+
+    class Meta:
+        managed = False
+        db_table = "revision_article"
