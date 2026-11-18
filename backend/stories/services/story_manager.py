@@ -1,9 +1,14 @@
 
 from django.utils import timezone
+from django.db import transaction
 
-from stories.models import Story, StoryRevision
+from stories.models import RevisionArticle, Story, StoryRevision, Publisher
+
+from stories.services.gemini import generate_story
+from stories.services.article_manager import get_or_create_article
 
 
+@transaction.atomic
 def create_story() -> Story:
     """
     Create a new Story record in the database.
@@ -30,7 +35,7 @@ def create_story() -> Story:
     return story
 
 
-
+@transaction.atomic
 def create_story_revision(
     story: Story,
     headline: str,
@@ -65,3 +70,54 @@ def create_story_revision(
 
     # Return the newly created revision.
     return revision
+
+
+def generate_and_save_story(articles: list[dict]) -> Story:
+    """
+    Generate a story using Gemini and save it to PostgreSQL.
+    """
+
+    # Extract the article text for Gemini.
+    article_texts = [article["text"] for article in articles]
+
+    # Generate the headline and summary before opening a transaction.
+    generated = generate_story(article_texts)
+
+    # Ensure all database operations succeed or fail together.
+    with transaction.atomic():
+
+        # Create the Story record.
+        story = create_story()
+
+        # Save Gemini's output as the first StoryRevision.
+        revision = create_story_revision(
+            story,
+            headline=generated["headline"],
+            summary=generated["summary"],
+        )
+
+        # Process each source article used to generate the story.
+        for article_data in articles:
+
+            # Find the publisher using its existing database ID.
+            publisher = Publisher.objects.get(
+                publisherid=article_data["publisher_id"]
+            )
+
+            # Create the Article record, or reuse it if its hash exists.
+            article = get_or_create_article(
+                title=article_data["title"],
+                link=article_data["link"],
+                text=article_data["text"],
+                publisher=publisher,
+            )
+
+            # Link this Article to the StoryRevision it contributed to.
+            RevisionArticle.objects.get_or_create(
+                articleid=article,
+                storyid=story,
+                revisionnum=revision.revisionnum,
+            )
+
+    # Return the newly created Story.
+    return story
