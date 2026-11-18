@@ -1,8 +1,11 @@
+
 import os
 from pathlib import Path
 
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -10,7 +13,13 @@ load_dotenv()
 PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "summarize.md"
 
 
-def generate_story(articles: list[str]) -> str:
+# Define the expected Gemini response structure
+class GeneratedStory(BaseModel):
+    headline: str
+    summary: str
+
+
+def generate_story(articles: list[str]) -> dict:
     # Load the prompt
     prompt = PROMPT_PATH.read_text(encoding="utf-8")
 
@@ -29,9 +38,14 @@ def generate_story(articles: list[str]) -> str:
     response = client.models.generate_content(
         model="gemini-3.5-flash-lite",
         contents=full_prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=GeneratedStory,
+        ),
     )
 
-    if not response.text:
-        raise ValueError("Gemini returned an empty response.")
+    # Validate and return the generated story
+    if not isinstance(response.parsed, GeneratedStory):
+        raise ValueError("Gemini returned an invalid story response.")
 
-    return response.text
+    return response.parsed.model_dump()
