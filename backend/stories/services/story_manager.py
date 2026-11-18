@@ -147,11 +147,26 @@ def generate_and_save_revision(
     an updated list of source articles.
     """
 
+    # Retrieve the existing Story to identify its current revision.
+    story = Story.objects.get(storyid=story_id)
+
     # Extract the article texts for Gemini.
     article_texts = [article["text"] for article in articles]
 
-    # Generate the updated headline and summary.
-    generated = generate_story(article_texts)
+    # Retrieve the current revision before generating the next one.
+    # This provides Gemini with context about the existing story.
+    previous_revision = StoryRevision.objects.get(
+        storyid_id=story_id,
+        revisionnum=story.currentrevisionnum,
+    )
+
+    # Generate the updated headline and summary using the new articles
+    # and the previous revision as additional context.
+    generated = generate_story(
+        article_texts,
+        previous_headline=previous_revision.headline,
+        previous_summary=previous_revision.summary,
+    )
 
     # Create the new revision inside a database transaction.
     with transaction.atomic():
