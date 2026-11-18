@@ -13,9 +13,3 @@ Using the provided news articles about the same event:
 - When reporting allegations, intelligence assessments, or disputed claims, explicitly attribute them to their sources and preserve uncertainty.
 - Do not treat multiple articles reporting the same original investigation as independent corroboration.
 - Do not invent information or present predictions as confirmed facts.
-
-Return your response as:
-
-Headline:
-
-Summary:
