@@ -13,6 +13,7 @@ from .services.story_manager import (
     generate_and_save_story,
     generate_and_save_revision,
     regenerate_rejected_revision,
+    cleanup_unused_article_text,
 )
 
 from .forms import ArticleFormSet, RevisionRejectionForm, StoryAdminForm
@@ -568,6 +569,19 @@ class StoryAdmin(admin.ModelAdmin):
 
                 approved += 1
 
+                # Collect article IDs associated with the approved revision.
+                article_ids = list(
+                    RevisionArticle.objects.filter(
+                        storyid=locked_story,
+                        revisionnum=revision.revisionnum,
+                    ).values_list("articleid_id", flat=True)
+                )
+
+                # Clean up these articles after approval commits.
+                transaction.on_commit(
+                    lambda ids=article_ids: cleanup_unused_article_text(ids)
+                )
+
         self.message_user(
             request,
             f"{approved} story revision(s) approved and published.",
@@ -615,6 +629,19 @@ class StoryAdmin(admin.ModelAdmin):
 
                 story.save(
                     update_fields=["publishedrevisionnum", "status"]
+                )
+
+                # Collect article IDs associated with the approved revision.
+                article_ids = list(
+                    RevisionArticle.objects.filter(
+                        storyid=story,
+                        revisionnum=revision.revisionnum,
+                    ).values_list("articleid_id", flat=True)
+                )
+
+                # Clean up these articles after approval commits.
+                transaction.on_commit(
+                    lambda ids=article_ids: cleanup_unused_article_text(ids)
                 )
 
                 messages.success(

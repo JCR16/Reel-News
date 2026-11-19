@@ -190,7 +190,7 @@ class Article(models.Model):
         managed = False
         db_table = "article"
 
-
+        
 
 class RevisionArticle(models.Model):
     pk = models.CompositePrimaryKey(
