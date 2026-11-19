@@ -1,8 +1,16 @@
 
 from django.utils import timezone
-from django.db import transaction
+from django.db import models, transaction
+from django.db.models import Exists, F, OuterRef
 
-from stories.models import RevisionArticle, Story, StoryRevision, Publisher
+from stories.models import (
+    Article,
+    ArticleText,
+    RevisionArticle,
+    Story,
+    StoryRevision,
+    Publisher,
+)
 
 from stories.services.gemini import generate_story
 from stories.services.article_manager import get_or_create_article
@@ -35,6 +43,10 @@ def create_story() -> Story:
     return story
 
 
+# IMPORTANT:
+# When modifying an existing Story, the caller must acquire
+# a select_for_update() lock on the Story before invoking
+# this function to prevent concurrent revision-number updates.
 @transaction.atomic
 def create_story_revision(
     story: Story,
@@ -93,6 +105,21 @@ def link_revision_article(
         link=article_data["link"],
         text=article_data["text"],
         publisher=publisher,
+    )
+
+    # Lock this Article while updating its stored text and
+    # creating its revision relationship.
+    # Cleanup must acquire the same lock before deleting text.
+    article = Article.objects.select_for_update().get(
+        pk=article.pk
+    )
+
+    # Temporarily retain the source text for editorial review.
+    # If the Article already exists, restore its text if it was
+    # previously deleted after publication.
+    ArticleText.objects.update_or_create(
+        articleid=article,
+        defaults={"text": article_data["text"]},
     )
 
     # Create or retrieve the relationship between
@@ -174,6 +201,17 @@ def generate_and_save_revision(
         # Lock the Story record to prevent simultaneous revision updates.
         story = Story.objects.select_for_update().get(storyid=story_id)
 
+        # Remember the current revision before it gets replaced.
+        previous_revision_num = story.currentrevisionnum
+
+        # Find the articles associated with that revision.
+        previous_article_ids = list(
+            RevisionArticle.objects.filter(
+                storyid=story,
+                revisionnum=previous_revision_num,
+            ).values_list("articleid_id", flat=True)
+        )
+
         # Create the next revision using Gemini's generated content.
         revision = create_story_revision(
             story,
@@ -185,5 +223,185 @@ def generate_and_save_revision(
         for article_data in articles:
             link_revision_article(story, revision, article_data)
 
+        # Only check articles from the previous revision for cleanup.
+        transaction.on_commit(
+            lambda ids=previous_article_ids: cleanup_unused_article_text(ids)
+        )
+
     # Return the newly created revision.
     return revision
+
+def regenerate_rejected_revision(story_id: int) -> StoryRevision:
+    """
+    Regenerate a rejected revision using its original source articles,
+    rejected headline/summary, and editorial feedback.
+
+    Preserve the rejected revision and create a new Draft revision.
+    """
+
+    # Retrieve the story and its most recent revision.
+    story = Story.objects.get(storyid=story_id)
+
+    rejected_revision = StoryRevision.objects.get(
+        storyid_id=story_id,
+        revisionnum=story.currentrevisionnum,
+    )
+
+    # Only rejected revisions can be regenerated with feedback.
+    if rejected_revision.status != "Rejected":
+        raise ValueError("Only rejected revisions can be regenerated.")
+
+    if not rejected_revision.reviewfeedback:
+        raise ValueError("The rejected revision has no review feedback.")
+
+    # Retrieve the original articles associated with this revision.
+    article_links = (
+        RevisionArticle.objects
+        .filter(
+            storyid=story,
+            revisionnum=rejected_revision.revisionnum,
+        )
+        .select_related("articleid", "articleid__publisherid")
+        .order_by("articleid_id")
+    )
+
+    articles = []
+
+    for link in article_links:
+        article = link.articleid
+
+        # Retrieve the original article text saved during generation.
+        stored_text = ArticleText.objects.get(articleid=article)
+
+        articles.append({
+            "title": article.title,
+            "link": article.link,
+            "text": stored_text.text,
+            "publisher_id": article.publisherid_id,
+        })
+
+    if not articles:
+        raise ValueError("No source articles found for regeneration.")
+
+    # Generate improved content before starting the database transaction.
+    generated = generate_story(
+        [article["text"] for article in articles],
+        previous_headline=rejected_revision.headline,
+        previous_summary=rejected_revision.summary,
+        review_feedback=rejected_revision.reviewfeedback,
+    )
+
+    # Save the new revision and its source article relationships.
+    with transaction.atomic():
+
+        # Lock the story to prevent simultaneous revision updates.
+        story = Story.objects.select_for_update().get(storyid=story_id)
+
+        # Ensure the rejected revision is still the current revision.
+        if story.currentrevisionnum != rejected_revision.revisionnum:
+            raise ValueError(
+                "The current revision changed during regeneration."
+            )
+
+        # Collect article IDs from the rejected revision before
+        # creating its replacement.
+        previous_article_ids = list(
+            RevisionArticle.objects.filter(
+                storyid=story,
+                revisionnum=rejected_revision.revisionnum,
+            ).values_list("articleid_id", flat=True)
+        )
+
+        revision = create_story_revision(
+            story,
+            headline=generated["headline"],
+            summary=generated["summary"],
+        )
+
+        for article_data in articles:
+            link_revision_article(story, revision, article_data)
+
+        # Unpublished stories return to Draft after regeneration.
+        # Already published stories remain Published.
+        if story.publishedrevisionnum is None:
+            story.status = "Draft"
+            story.save(update_fields=["status"])
+
+        # Check the rejected revision's articles for cleanup after
+        # the new Draft revision and its article links are committed.
+        transaction.on_commit(
+            lambda ids=previous_article_ids: cleanup_unused_article_text(ids)
+        )
+
+    return revision
+
+def find_unused_article_text(article_ids=None):
+    """
+    Find article text not needed by any current Draft
+    or Rejected revision.
+
+    If article_ids is provided, only examine those articles.
+    This function does not delete anything.
+    """
+
+    # Find current Draft or Rejected revisions that
+    # still require the article's stored text.
+    needed_by_revision = StoryRevision.objects.filter(
+        storyid_id__in=RevisionArticle.objects.filter(
+            articleid_id=OuterRef(OuterRef("articleid_id")),
+            revisionnum=F("storyid__currentrevisionnum"),
+        ).values("storyid_id"),
+        revisionnum=F("storyid__currentrevisionnum"),
+        status__in=["Draft", "Rejected"],
+    )
+
+    # Start with all stored article text.
+    article_text = ArticleText.objects.all()
+
+    # Optionally restrict cleanup to specific articles.
+    if article_ids is not None:
+        article_text = article_text.filter(
+            articleid_id__in=article_ids
+        )
+
+    # Exclude articles still needed by an active revision.
+    return article_text.annotate(
+        is_needed=Exists(needed_by_revision)
+    ).filter(is_needed=False)
+
+
+@transaction.atomic
+def cleanup_unused_article_text(article_ids=None):
+    """
+    Delete article text that is no longer needed.
+
+    Lock Article records before checking whether their text
+    is still required by any current Draft or Rejected revision.
+
+    Preserve Article and RevisionArticle records.
+    """
+
+    # Identify which articles currently have stored text.
+    articles = Article.objects.filter(
+        pk__in=ArticleText.objects.values("articleid_id")
+    )
+
+    # Optionally restrict cleanup to specific articles.
+    if article_ids is not None:
+        articles = articles.filter(pk__in=article_ids)
+
+    # Lock articles in a consistent order to reduce deadlock risk.
+    locked_article_ids = list(
+        articles.order_by("pk")
+        .select_for_update()
+        .values_list("pk", flat=True)
+    )
+
+    # Recheck eligibility after acquiring the locks.
+    unused_text = find_unused_article_text(locked_article_ids)
+
+    # Delete only the unused ArticleText records.
+    count = unused_text.count()
+    unused_text.delete()
+
+    return count

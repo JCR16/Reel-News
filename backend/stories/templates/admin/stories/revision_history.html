@@ -18,7 +18,16 @@
             {% if revision.revisionnum == story.currentrevisionnum %}
                 (Current)
             {% endif %}
+
+            {% if revision.revisionnum == story.publishedrevisionnum %}
+                (Published)
+            {% endif %}
         </h2>
+
+        <p>
+            <strong>Revision Status:</strong>
+            {{ revision.status }}
+        </p>
 
         <p>
             <strong>Created:</strong>
