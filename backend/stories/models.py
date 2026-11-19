@@ -113,6 +113,11 @@ class Publisher(models.Model):
         null=True,
     )
 
+    def __str__(self):
+        # Display the publisher's name instead of "Publisher object (ID)".
+        return self.name or f"Publisher {self.publisherid}"
+
+
     class Meta:
         managed = False
         db_table = "publisher"
