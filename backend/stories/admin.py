@@ -432,7 +432,15 @@ class StoryAdmin(admin.ModelAdmin):
             "admin/stories/revision_history.html",
             context,
         )
+
     
-    # StoryRevision and RevisionArticle use composite primary keys.
-    # Django Admin does not support registering these models directly.
-    # We'll manage them through custom administrative workflows.
+# Customize Django Admin branding for Reel News.
+
+# Text displayed in the top-left header.
+admin.site.site_header = "Reel News Administration"
+
+# Text displayed in the browser tab.
+admin.site.site_title = "Reel News Admin"
+
+# Heading displayed on the Admin homepage.
+admin.site.index_title = "Reel News Management"
