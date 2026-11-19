@@ -82,7 +82,12 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(rgba(0, 0, 0, 0.85), transparent 60%);
+  background: linear-gradient(
+    rgba(0, 0, 0, 0.9) 0%,
+    rgba(0, 0, 0, 0.7) 35%,
+    rgba(0, 0, 0, 0.2) 65%,
+    transparent 90%
+  );
 }
 
 .article-text {
@@ -99,15 +104,24 @@
 }
 
 .article-text h1 {
-  color: white;
-  font-size: 36px;
+  color: #fff;
+  font-family: "Playfair Display", Georgia, "Times New Roman", serif;
+  font-weight: 700;
+  font-size: clamp(26px, 5vw, 38px);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
   margin: 0 0 20px;
-  line-height: 1.1;
+  text-wrap: balance;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6), 0 4px 24px rgba(0, 0, 0, 0.5);
 }
 
 .article-text p {
-  font-size: 18px;
-  line-height: 1.5;
+  font-size: clamp(16px, 2.4vw, 19px);
+  line-height: 1.6;
+  max-width: 60ch;
+  margin-inline: auto;
+  text-wrap: pretty;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
 }
 
 .article-action {
