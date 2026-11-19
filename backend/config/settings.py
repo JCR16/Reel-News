@@ -69,13 +69,15 @@ ALLOWED_HOSTS = os.getenv(
 # Reel News customization: Register the REST API, CORS middleware,
 # and the team's stories application.
 INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'stories',
+    # Search our app's templates before Django Admin's defaults.
+    "stories",
+
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
 ]
 
 MIDDLEWARE = [

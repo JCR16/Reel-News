@@ -1,0 +1,26 @@
+{% extends "admin/change_form.html" %}
+
+{% block object-tools-items %}
+
+    {% if original %}
+
+        <!-- Open the complete Reel News revision history. -->
+        <li>
+            <a href="{% url 'admin:stories_story_revision_history' original.storyid %}">
+                Revision History
+            </a>
+        </li>
+
+        <!-- Generate a new revision for this story. -->
+        <li>
+            <a href="{% url 'admin:stories_story_generate_revision' original.storyid %}">
+                Generate Revision
+            </a>
+        </li>
+
+    {% endif %}
+
+    <!-- Preserve Django Admin's default History button. -->
+    {{ block.super }}
+
+{% endblock %}

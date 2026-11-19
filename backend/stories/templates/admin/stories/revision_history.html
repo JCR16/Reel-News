@@ -1,0 +1,70 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+
+<p>
+    <strong>Story ID:</strong> {{ story.storyid }}
+    |
+    <strong>Current Revision:</strong> {{ story.currentrevisionnum }}
+</p>
+
+<!-- Display all revisions, newest first. -->
+{% for revision in revisions %}
+    <fieldset class="module aligned">
+
+        <h2>
+            Revision {{ revision.revisionnum }}
+
+            {% if revision.revisionnum == story.currentrevisionnum %}
+                (Current)
+            {% endif %}
+        </h2>
+
+        <p>
+            <strong>Created:</strong>
+            {{ revision.datecreated }}
+        </p>
+
+        <p>
+            <strong>Headline:</strong>
+            {{ revision.headline }}
+        </p>
+
+        <p>
+            <strong>Summary:</strong>
+            {{ revision.summary }}
+        </p>
+
+        <!-- Display the source articles used for this revision. -->
+        <h3>Source Articles</h3>
+
+        <ul>
+            {% for article in revision.source_articles %}
+                <li>
+                    <a
+                        href="{{ article.link }}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        {{ article.title }}
+                    </a>
+
+                    —
+                    {% if article.publisherid %}
+                        {{ article.publisherid.name }}
+                    {% else %}
+                        Unknown Publisher
+                    {% endif %}
+                </li>
+            {% empty %}
+                <li>No source articles found.</li>
+            {% endfor %}
+        </ul>
+
+    </fieldset>
+
+{% empty %}
+    <p>No revisions found for this story.</p>
+{% endfor %}
+
+{% endblock %}
