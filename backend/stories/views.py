@@ -13,6 +13,7 @@
 
 from django.shortcuts import render
 from django.shortcuts import get_object_or_404
+from .models import Story, StoryRevision, RevisionArticle
 
 from .models import Story, StoryRevision
 
@@ -53,4 +54,25 @@ def feed(request):
 
     return render(request, "stories/feed.html", {
         "stories": results
+    })
+
+def story_detail(request, story_id):
+    story = get_object_or_404(Story, storyid=story_id)
+
+    revision = get_object_or_404(
+        StoryRevision,
+        storyid_id=story.storyid,
+        revisionnum=story.currentrevisionnum
+    )
+
+    sources = (
+        RevisionArticle.objects
+        .filter(storyid_id=story.storyid, revisionnum=revision.revisionnum)
+        .select_related("articleid", "articleid__publisherid")
+    )
+
+    return render(request, "stories/detail.html", {
+        "story": story,
+        "revision": revision,
+        "sources": sources,
     })

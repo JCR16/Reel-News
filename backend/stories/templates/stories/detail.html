@@ -1,4 +1,3 @@
-
 {% load static %}
 <!DOCTYPE html>
 <html lang="en">
@@ -8,17 +7,22 @@
     <title>{{ revision.headline }} | Reel News</title>
 
     <link rel="stylesheet" href="{% static 'stories/css/global.css' %}">
+    <link rel="stylesheet" href="{% static 'stories/css/detail.css' %}">
 </head>
-<body>
+<body class="detail-page">
     <main class="story-detail">
 
         <!-- Return to the main feed -->
-        <a href="{% url 'feed' %}">← Back to Feed</a>
+        <a class="back-link" href="{% url 'feed' %}">← Back to Feed</a>
 
         <!-- Story information -->
         <article>
+            {% if story.imageurl %}
+            <img class="story-image" src="{{ story.imageurl }}" alt="">
+            {% endif %}
+
             <h1>{{ revision.headline }}</h1>
-            <p>Status: {{ story.status }}</p>
+            <p class="story-meta">Status: {{ story.status }}</p>
 
             <!-- Existing summary -->
             <section>
@@ -29,25 +33,45 @@
             <!-- Future detailed summary -->
             <section>
                 <h2>Full Summary</h2>
-                <p>
+                <p class="placeholder">
                     A more detailed summary of this story
                     will appear here.
                 </p>
             </section>
 
-            <!-- Future source listings -->
+            <!-- Source articles for this revision -->
             <section>
                 <h2>Sources</h2>
-                <p>
+                {% if sources %}
+                <ul class="source-list">
+                    {% for link in sources %}
+                    <li>
+                        <a href="{{ link.articleid.link }}" target="_blank" rel="noopener noreferrer">
+                            {{ link.articleid.title }}
+                        </a>
+                        {% if link.articleid.publisherid %}
+                        <span class="source-publisher">
+                            {{ link.articleid.publisherid.name }}
+                            {% if link.articleid.publisherid.biascategory %}
+                            · {{ link.articleid.publisherid.biascategory }}
+                            {% endif %}
+                        </span>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="placeholder">
                     Original news articles will be listed here,
                     grouped by political leaning.
                 </p>
+                {% endif %}
             </section>
 
             <!-- Future related images -->
             <section>
                 <h2>Related Images</h2>
-                <p>
+                <p class="placeholder">
                     Additional images related to this story
                     will appear here.
                 </p>
@@ -56,7 +80,7 @@
             <!-- Future political analysis -->
             <section>
                 <h2>Political Analysis</h2>
-                <p>
+                <p class="placeholder">
                     An analysis comparing how different
                     sources cover this story will appear here.
                 </p>

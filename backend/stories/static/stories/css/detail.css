@@ -1,0 +1,69 @@
+/* Reel News - Story Detail Page */
+
+/* global.css disables scrolling for the feed; the detail page needs it */
+body.detail-page {
+  overflow-y: auto;
+}
+
+.story-detail {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 32px 20px 64px;
+  color: #f3f4f6;
+}
+
+.story-detail h1 {
+  color: #fff;
+  font-size: 36px;
+  line-height: 1.15;
+  margin: 24px 0 8px;
+}
+
+.story-detail h2 {
+  color: #fff;
+  font-size: 22px;
+  margin: 32px 0 8px;
+}
+
+.story-detail p {
+  line-height: 1.6;
+}
+
+.back-link,
+.story-detail a {
+  color: #ffb3b9;
+}
+
+.story-image {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.story-meta,
+.source-publisher {
+  color: #c9ccd3;
+  font-size: 14px;
+}
+
+.placeholder {
+  color: #c9ccd3;
+  font-style: italic;
+}
+
+.source-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.source-list li {
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.source-publisher {
+  display: block;
+}
