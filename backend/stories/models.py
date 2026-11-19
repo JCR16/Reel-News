@@ -27,6 +27,11 @@ class Story(models.Model):
         blank=True,
         null=True,
     )
+    publishedrevisionnum = models.IntegerField(
+        db_column="publishedRevisionNum",
+        blank=True,
+        null=True
+    )
     datecreated = models.DateTimeField(
         db_column="dateCreated",
         blank=True,
@@ -76,6 +81,15 @@ class StoryRevision(models.Model):
         db_column="changeNote",
         blank=True,
         null=True,
+    )
+    status = models.CharField(
+        max_length=20,
+        default="Draft"
+    )
+    reviewfeedback = models.TextField(
+        db_column="reviewFeedback",
+        blank=True,
+        null=True
     )
 
     class Meta:
@@ -201,3 +215,18 @@ class RevisionArticle(models.Model):
     class Meta:
         managed = False
         db_table = "revision_article"
+
+
+
+class ArticleText(models.Model):
+    articleid = models.OneToOneField(
+        Article,
+        models.CASCADE,
+        db_column="articleID",
+        primary_key=True
+    )
+    text = models.TextField()
+
+    class Meta:
+        managed = False
+        db_table = "article_text"

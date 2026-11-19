@@ -2,7 +2,13 @@
 from django.utils import timezone
 from django.db import transaction
 
-from stories.models import RevisionArticle, Story, StoryRevision, Publisher
+from stories.models import (
+    ArticleText,
+    RevisionArticle,
+    Story,
+    StoryRevision,
+    Publisher,
+)
 
 from stories.services.gemini import generate_story
 from stories.services.article_manager import get_or_create_article
@@ -93,6 +99,14 @@ def link_revision_article(
         link=article_data["link"],
         text=article_data["text"],
         publisher=publisher,
+    )
+
+    # Temporarily retain the source text for editorial review.
+    # If the Article already exists, restore its text if it was
+    # previously deleted after publication.
+    ArticleText.objects.update_or_create(
+        articleid=article,
+        defaults={"text": article_data["text"]},
     )
 
     # Create or retrieve the relationship between
@@ -186,4 +200,93 @@ def generate_and_save_revision(
             link_revision_article(story, revision, article_data)
 
     # Return the newly created revision.
+    return revision
+
+def regenerate_rejected_revision(story_id: int) -> StoryRevision:
+    """
+    Regenerate a rejected revision using its original source articles,
+    rejected headline/summary, and editorial feedback.
+
+    Preserve the rejected revision and create a new Draft revision.
+    """
+
+    # Retrieve the story and its most recent revision.
+    story = Story.objects.get(storyid=story_id)
+
+    rejected_revision = StoryRevision.objects.get(
+        storyid_id=story_id,
+        revisionnum=story.currentrevisionnum,
+    )
+
+    # Only rejected revisions can be regenerated with feedback.
+    if rejected_revision.status != "Rejected":
+        raise ValueError("Only rejected revisions can be regenerated.")
+
+    if not rejected_revision.reviewfeedback:
+        raise ValueError("The rejected revision has no review feedback.")
+
+    # Retrieve the original articles associated with this revision.
+    article_links = (
+        RevisionArticle.objects
+        .filter(
+            storyid=story,
+            revisionnum=rejected_revision.revisionnum,
+        )
+        .select_related("articleid", "articleid__publisherid")
+        .order_by("articleid_id")
+    )
+
+    articles = []
+
+    for link in article_links:
+        article = link.articleid
+
+        # Retrieve the original article text saved during generation.
+        stored_text = ArticleText.objects.get(articleid=article)
+
+        articles.append({
+            "title": article.title,
+            "link": article.link,
+            "text": stored_text.text,
+            "publisher_id": article.publisherid_id,
+        })
+
+    if not articles:
+        raise ValueError("No source articles found for regeneration.")
+
+    # Generate improved content before starting the database transaction.
+    generated = generate_story(
+        [article["text"] for article in articles],
+        previous_headline=rejected_revision.headline,
+        previous_summary=rejected_revision.summary,
+        review_feedback=rejected_revision.reviewfeedback,
+    )
+
+    # Save the new revision and its source article relationships.
+    with transaction.atomic():
+
+        # Lock the story to prevent simultaneous revision updates.
+        story = Story.objects.select_for_update().get(storyid=story_id)
+
+        # Ensure the rejected revision is still the current revision.
+        if story.currentrevisionnum != rejected_revision.revisionnum:
+            raise ValueError(
+                "The current revision changed during regeneration."
+            )
+
+        revision = create_story_revision(
+            story,
+            headline=generated["headline"],
+            summary=generated["summary"],
+        )
+
+        for article_data in articles:
+            link_revision_article(story, revision, article_data)
+
+        # Unpublished stories return to Draft after regeneration.
+        # Already published stories remain Published.
+        if story.publishedrevisionnum is None:
+            story.status = "Draft"
+            story.save(update_fields=["status"])
+
     return revision

@@ -1,0 +1,49 @@
+
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+
+<h2>Reject Revision {{ revision.revisionnum }}</h2>
+
+<p>
+    You are rejecting the current revision of
+    <strong>Story #{{ story.storyid }}</strong>.
+</p>
+
+<fieldset class="module aligned">
+    <h2>Current Revision</h2>
+
+    <div class="form-row">
+        <strong>Headline:</strong>
+        <p>{{ revision.headline }}</p>
+    </div>
+
+    <div class="form-row">
+        <strong>Summary:</strong>
+        <p>{{ revision.summary }}</p>
+    </div>
+</fieldset>
+
+<form method="post">
+    {% csrf_token %}
+
+    <fieldset class="module aligned">
+        <h2>Rejection Feedback</h2>
+
+        {{ form.as_p }}
+    </fieldset>
+
+    <div class="submit-row">
+        <input
+            type="submit"
+            value="Reject Revision"
+            class="default"
+        >
+
+        <a href="{% url 'admin:stories_story_change' story.storyid %}">
+            Cancel
+        </a>
+    </div>
+</form>
+
+{% endblock %}
