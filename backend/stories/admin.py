@@ -102,6 +102,35 @@ class CurrentRevisionStatusFilter(admin.SimpleListFilter):
             revisions__revisionnum=F("currentrevisionnum"),
             revisions__status=self.value(),
         )
+
+class PublicationStateFilter(admin.SimpleListFilter):
+    """
+    Filter stories based on whether they have a published revision.
+
+    A story can have a published revision even when its
+    current working revision is Draft or Rejected.
+    """
+
+    title = "publication state"
+    parameter_name = "publication_state"
+
+    def lookups(self, request, model_admin):
+        return [
+            ("published", "Has Published Revision"),
+            ("unpublished", "Never Published"),
+        ]
+
+    def queryset(self, request, queryset):
+        if self.value() == "published":
+            # Stories with an approved revision.
+            return queryset.filter(publishedrevisionnum__isnull=False)
+
+        if self.value() == "unpublished":
+            # Stories that have never had an approved revision.
+            return queryset.filter(publishedrevisionnum__isnull=True)
+
+        # No publication state filter selected.
+        return queryset
     
 @admin.register(Story)
 class StoryAdmin(admin.ModelAdmin):
@@ -129,6 +158,7 @@ class StoryAdmin(admin.ModelAdmin):
     # and creation date.
     list_filter = (
         CurrentRevisionStatusFilter,
+        PublicationStateFilter,
         "status",
         "datecreated",
     )
