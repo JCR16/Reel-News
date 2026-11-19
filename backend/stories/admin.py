@@ -8,6 +8,7 @@ from django.utils.safestring import mark_safe
 from django.http import Http404, HttpResponseNotAllowed
 
 from django.db import transaction
+from django.db.models import F, Q
 
 from .services.story_manager import (
     generate_and_save_story,
@@ -70,6 +71,37 @@ class ArticleAdmin(admin.ModelAdmin):
     def publisher_name(self, obj):
         # Display the publisher's name instead of its ID.
         return obj.publisherid.name if obj.publisherid else "Unknown"
+
+class CurrentRevisionStatusFilter(admin.SimpleListFilter):
+    """
+    Filter stories by the status of their current revision.
+
+    This is separate from Story.status because a published
+    story may have a newer Draft or Rejected revision.
+    """
+
+    title = "current revision status"
+    parameter_name = "current_revision_status"
+
+    def lookups(self, request, model_admin):
+        # Options displayed in the Django Admin sidebar.
+        return [
+            ("Draft", "Draft (Awaiting Review)"),
+            ("Rejected", "Rejected (Needs Changes)"),
+            ("Published", "Published"),
+        ]
+
+    def queryset(self, request, queryset):
+        # Return all stories when no filter is selected.
+        if self.value() is None:
+            return queryset
+
+        # Find stories whose current revision matches the
+        # selected status.
+        return queryset.filter(
+            revisions__revisionnum=F("currentrevisionnum"),
+            revisions__status=self.value(),
+        )
     
 @admin.register(Story)
 class StoryAdmin(admin.ModelAdmin):
@@ -81,9 +113,11 @@ class StoryAdmin(admin.ModelAdmin):
     # Register an action in the Story list's Actions dropdown.
     actions = ["approve_revision"]
 
-    # Display useful story information.
+    # Display story information, including its current headline,
+    # so editors can identify stories without opening them.
     list_display = (
         "storyid",
+        "current_headline",
         "currentrevisionnum",
         "current_revision_status",
         "status",
@@ -91,11 +125,17 @@ class StoryAdmin(admin.ModelAdmin):
         "datemodified",
     )
 
-    # Filter stories by publication status and creation date.
-    list_filter = ("status", "datecreated")
+    # Filter by current revision status, overall story status,
+    # and creation date.
+    list_filter = (
+        CurrentRevisionStatusFilter,
+        "status",
+        "datecreated",
+    )
 
-    # Search for a story using its ID.
-    search_fields = ("=storyid",)
+    # Keep Django Admin's search bar visible.
+    # Actual searching is handled by get_search_results().
+    search_fields = ("storyid",)
 
     # Prevent accidental changes to automatically managed fields.
     readonly_fields = (
@@ -1010,6 +1050,38 @@ class StoryAdmin(admin.ModelAdmin):
             updated_fieldsets.append((name, options))
 
         return updated_fieldsets
+
+    def get_search_results(self, request, queryset, search_term):
+        """
+        Search stories by their Story ID or current revision headline.
+
+        Only search the current revision's headline, not
+        headlines belonging to historical revisions.
+        """
+
+        # Return all stories when the search field is empty.
+        if not search_term:
+            return queryset, False
+
+        # Find stories whose current revision headline contains
+        # the entered search term.
+        matching_stories = StoryRevision.objects.filter(
+            revisionnum=F("storyid__currentrevisionnum"),
+            headline__icontains=search_term,
+        ).values("storyid_id")
+
+        # Search by Story ID when the entered value is numeric.
+        if search_term.isdigit():
+            queryset = queryset.filter(
+                Q(storyid=int(search_term)) |
+                Q(storyid__in=matching_stories)
+            )
+        else:
+            queryset = queryset.filter(
+                storyid__in=matching_stories
+            )
+
+        return queryset, False
     
 # Customize Django Admin branding for Reel News.
 
