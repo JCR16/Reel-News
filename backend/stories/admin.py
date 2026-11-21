@@ -1,5 +1,5 @@
 from django.contrib import admin, messages
-from .models import Publisher, Article, Story, StoryRevision, RevisionArticle
+from .models import Publisher, Article, Story, StoryRevision, RevisionArticle, Tag, StoryTag
 
 from django.shortcuts import redirect, render
 from django.urls import path, reverse
@@ -17,11 +17,28 @@ from .services.story_manager import (
     cleanup_unused_article_text,
 )
 
-from .forms import ArticleFormSet, RevisionRejectionForm, StoryAdminForm
+from .forms import ArticleFormSet, RevisionRejectionForm, StoryAdminForm, TagAdminForm
 
 import logging
 
 logger = logging.getLogger(__name__)
+
+@admin.register(Tag)
+class TagAdmin(admin.ModelAdmin):
+    """
+    Allows administrators to create, edit, and delete
+    tags through Django Admin.
+    """
+    form = TagAdminForm
+    
+    # Show tag information in the Admin list.
+    list_display = ("tagid", "name", "description")
+
+    # Allow administrators to search tags by name.
+    search_fields = ("name",)
+
+    # Sort tags alphabetically.
+    ordering = ("name",)
 
 # Register models that use a single-column primary key.
 @admin.register(Publisher)
@@ -131,6 +148,35 @@ class PublicationStateFilter(admin.SimpleListFilter):
 
         # No publication state filter selected.
         return queryset
+
+class StoryTagFilter(admin.SimpleListFilter):
+    """
+    Filter stories by their assigned tags.
+    """
+
+    title = "story tag"
+    parameter_name = "story_tag"
+
+    def lookups(self, request, model_admin):
+        # Display all available tags in the filter sidebar.
+        return [
+            (str(tag.tagid), tag.name)
+            for tag in Tag.objects.order_by("name")
+        ]
+
+    def queryset(self, request, queryset):
+        # Return all stories when no tag is selected.
+        if self.value() is None:
+            return queryset
+
+        # Find stories associated with the selected tag.
+        matching_story_ids = StoryTag.objects.filter(
+            tagid_id=self.value()
+        ).values("storyid_id")
+
+        return queryset.filter(
+            storyid__in=matching_story_ids
+        )
     
 @admin.register(Story)
 class StoryAdmin(admin.ModelAdmin):
@@ -159,6 +205,7 @@ class StoryAdmin(admin.ModelAdmin):
     list_filter = (
         CurrentRevisionStatusFilter,
         PublicationStateFilter,
+        StoryTagFilter,
         "status",
         "datecreated",
     )
@@ -192,6 +239,14 @@ class StoryAdmin(admin.ModelAdmin):
                     "datecreated",
                     "datemodified",
                 ],
+            },
+        ),
+        (
+            "Story Tags",
+            {
+                "classes": ["collapse"],
+                "fields": ("tags",),
+                "description": "Assign categories and topics to this story.",
             },
         ),
         (
@@ -1112,6 +1167,43 @@ class StoryAdmin(admin.ModelAdmin):
             )
 
         return queryset, False
+
+    def save_related(self, request, form, formsets, change):
+        """
+        Save the story's tag relationships after the story itself
+        has been saved.
+
+        Preserve existing relationships, add newly selected tags,
+        and remove tags that were deselected.
+        """
+
+        # Allow Django Admin to save its normal related objects first.
+        super().save_related(request, form, formsets, change)
+
+        # Get the IDs of all tags selected in the form.
+        selected_tag_ids = {
+            tag.pk for tag in form.cleaned_data["tags"]
+        }
+
+        # Get the IDs of tags currently assigned to this story.
+        existing_tag_ids = set(
+            StoryTag.objects.filter(
+                storyid=form.instance
+            ).values_list("tagid_id", flat=True)
+        )
+
+        # Create relationships for newly selected tags.
+        for tag_id in selected_tag_ids - existing_tag_ids:
+            StoryTag.objects.create(
+                storyid=form.instance,
+                tagid_id=tag_id,
+            )
+
+        # Remove relationships for deselected tags.
+        StoryTag.objects.filter(
+            storyid=form.instance,
+            tagid_id__in=existing_tag_ids - selected_tag_ids,
+        ).delete()
     
 # Customize Django Admin branding for Reel News.
 

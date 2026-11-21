@@ -1,5 +1,5 @@
 from django import forms
-from stories.models import Story
+from stories.models import Story, Tag
 
 class ArticleInputForm(forms.Form):
     """
@@ -61,6 +61,39 @@ class RevisionRejectionForm(forms.Form):
     )
 
 
+class TagAdminForm(forms.ModelForm):
+    """
+    Validate tag names to prevent duplicate tags.
+    """
+
+    class Meta:
+        model = Tag
+        fields = "__all__"
+
+    def clean_name(self):
+        # Remove leading and trailing whitespace.
+        name = self.cleaned_data["name"].strip()
+
+        # Check for existing tags with the same name,
+        # ignoring capitalization.
+        existing_tags = Tag.objects.filter(
+            name__iexact=name
+        )
+
+        # Exclude the current tag when editing an existing one.
+        if self.instance.pk:
+            existing_tags = existing_tags.exclude(
+                pk=self.instance.pk
+            )
+
+        if existing_tags.exists():
+            raise forms.ValidationError(
+                "A tag with this name already exists."
+            )
+
+        return name
+
+
 class StoryAdminForm(forms.ModelForm):
     """
     Add an editable review feedback field to the Story Admin form.
@@ -78,12 +111,28 @@ class StoryAdminForm(forms.ModelForm):
         help_text="Feedback used when regenerating a rejected revision.",
     )
 
+    # Allow administrators to assign multiple tags to a story.
+    # The available choices come from the Tag table.
+    tags = forms.ModelMultipleChoiceField(
+        queryset=Tag.objects.all().order_by("name"),
+        widget=forms.SelectMultiple(attrs={"size": 8}),
+        required=False,
+        label="Story Tags",
+        help_text="Hold Ctrl (or Cmd on Mac) to select multiple tags.",
+    )
+
     class Meta:
         model = Story
         fields = "__all__"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # Preselect the tags already associated with this story.
+        if self.instance.pk:
+            self.fields["tags"].initial = Tag.objects.filter(
+                story_links__storyid=self.instance
+            )
 
         # Record the revision number when the administrator opens the form.
         if self.instance.pk:

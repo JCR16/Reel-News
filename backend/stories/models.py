@@ -230,3 +230,64 @@ class ArticleText(models.Model):
     class Meta:
         managed = False
         db_table = "article_text"
+
+class Tag(models.Model):
+    """
+    Represents a category or topic that can be assigned to stories.
+
+    Examples: Politics, Technology, World News.
+    """
+
+    # PostgreSQL automatically generates unique tag IDs.
+    tagid = models.AutoField(
+        db_column="tagID",
+        primary_key=True,
+    )
+
+    name = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+
+    description = models.TextField(
+        blank=True,
+        null=True,
+    )
+
+    def __str__(self):
+        # Display the tag name in Django Admin.
+        return self.name or f"Tag {self.tagid}"
+
+    class Meta:
+        managed = False
+        db_table = "tag"
+
+class StoryTag(models.Model):
+    """
+    Junction table connecting stories and tags.
+
+    A story can have multiple tags, and the same tag
+    can be assigned to multiple stories.
+    """
+
+    # Prevent duplicate story/tag combinations.
+    pk = models.CompositePrimaryKey("storyid", "tagid")
+
+    storyid = models.ForeignKey(
+        Story,
+        models.DO_NOTHING,
+        db_column="storyID",
+        related_name="tag_links",
+    )
+
+    tagid = models.ForeignKey(
+        Tag,
+        models.DO_NOTHING,
+        db_column="tagID",
+        related_name="story_links",
+    )
+
+    class Meta:
+        managed = False
+        db_table = "story_tag"
