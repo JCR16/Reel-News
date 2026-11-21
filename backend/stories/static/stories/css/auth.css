@@ -1,0 +1,61 @@
+/* Reel News - Login and Signup */
+
+body.auth-page {
+  overflow-y: auto;
+  display: grid;
+  place-items: center;
+  min-height: 100svh;
+  padding: 24px 16px;
+}
+
+.auth-card {
+  width: min(100%, 400px);
+  padding: 32px 28px;
+  background: rgba(0, 0, 0, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  color: #f3f4f6;
+  text-align: center;
+}
+
+.auth-card h1 {
+  color: #fff;
+  font-size: 32px;
+  margin: 0 0 20px;
+}
+
+.auth-card p { line-height: 1.5; margin-bottom: 14px; }
+
+.auth-card form p { text-align: left; }
+.auth-card label { display: block; margin-bottom: 4px; font-size: 14px; }
+
+.auth-card input[type="text"],
+.auth-card input[type="email"],
+.auth-card input[type="password"] {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font: inherit;
+}
+
+.auth-card .helptext,
+.auth-card ul { font-size: 12px; color: #c9ccd3; }
+.auth-card .errorlist { color: #ffb3b9; list-style: none; padding: 0; margin: 4px 0; }
+
+.auth-card button[type="submit"] {
+  width: 100%;
+  margin-top: 8px;
+  padding: 11px;
+  border: none;
+  border-radius: 6px;
+  background: #e63946;
+  color: #fff;
+  font: inherit;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.auth-switch a { color: #ffb3b9; }
