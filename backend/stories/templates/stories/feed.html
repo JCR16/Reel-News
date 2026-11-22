@@ -13,6 +13,17 @@
 </head>
 
 <body>
+    <nav class="account-bar">
+    {% if user.is_authenticated %}
+        <span class="account-name">{{ user.username }}</span>
+        <form method="post" action="{% url 'logout' %}">
+            {% csrf_token %}
+            <button type="submit" class="account-link">Log out</button>
+        </form>
+    {% else %}
+        <a href="{% url 'login' %}" class="account-link">Log in</a>
+    {% endif %}
+    </nav>
     <section id="center">
         <div class="feed">
 
@@ -52,6 +63,7 @@
 
         </div>
     </section>
+    
 </body>
 
 </html>

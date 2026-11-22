@@ -71,6 +71,7 @@ ALLOWED_HOSTS = os.getenv(
 INSTALLED_APPS = [
     # Search our app's templates before Django Admin's defaults.
     "stories",
+    'accounts',
 
     "django.contrib.admin",
     "django.contrib.auth",
@@ -188,3 +189,6 @@ MAILERS = {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
 }
+LOGIN_URL = "login"
+LOGIN_REDIRECT_URL = "feed"
+LOGOUT_REDIRECT_URL = "feed"
