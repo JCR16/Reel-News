@@ -39,52 +39,54 @@
                 </p>
             </section>
 
-            <!-- Source articles for this revision -->
-            <section>
-                <h2>Sources</h2>
-                {% if sources %}
-                <ul class="source-list">
-                    {% for link in sources %}
-                    <li>
-                        <a href="{{ link.articleid.link }}" target="_blank" rel="noopener noreferrer">
-                            {{ link.articleid.title }}
-                        </a>
-                        {% if link.articleid.publisherid %}
-                        <span class="source-publisher">
-                            {{ link.articleid.publisherid.name }}
-                            {% if link.articleid.publisherid.biascategory %}
-                            · {{ link.articleid.publisherid.biascategory }}
+            <div class="detail-lower-background">
+                <!-- Source articles for this revision -->
+                <section>
+                    <h2>Sources</h2>
+                    {% if sources %}
+                    <ul class="source-list">
+                        {% for link in sources %}
+                        <li>
+                            <a href="{{ link.articleid.link }}" target="_blank" rel="noopener noreferrer">
+                                {{ link.articleid.title }}
+                            </a>
+                            {% if link.articleid.publisherid %}
+                            <span class="source-publisher">
+                                {{ link.articleid.publisherid.name }}
+                                {% if link.articleid.publisherid.biascategory %}
+                                · {{ link.articleid.publisherid.biascategory }}
+                                {% endif %}
+                            </span>
                             {% endif %}
-                        </span>
-                        {% endif %}
-                    </li>
-                    {% endfor %}
-                </ul>
-                {% else %}
-                <p class="placeholder">
-                    Original news articles will be listed here,
-                    grouped by political leaning.
-                </p>
-                {% endif %}
-            </section>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="placeholder">
+                        Original news articles will be listed here,
+                        grouped by political leaning.
+                    </p>
+                    {% endif %}
+                </section>
 
-            <!-- Future related images -->
-            <section>
-                <h2>Related Images</h2>
-                <p class="placeholder">
-                    Additional images related to this story
-                    will appear here.
-                </p>
-            </section>
+                <!-- Future related images -->
+                <section>
+                    <h2>Related Images</h2>
+                    <p class="placeholder">
+                        Additional images related to this story
+                        will appear here.
+                    </p>
+                </section>
 
-            <!-- Future political analysis -->
-            <section>
-                <h2>Political Analysis</h2>
-                <p class="placeholder">
-                    An analysis comparing how different
-                    sources cover this story will appear here.
-                </p>
-            </section>
+                <!-- Future political analysis -->
+                <section>
+                    <h2>Political Analysis</h2>
+                    <p class="placeholder">
+                        An analysis comparing how different
+                        sources cover this story will appear here.
+                    </p>
+                </section>
+            </div>
         </article>
 
     </main>

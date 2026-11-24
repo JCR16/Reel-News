@@ -2,6 +2,8 @@
 
 /* global.css disables scrolling for the feed; the detail page needs it */
 body.detail-page {
+  height: auto;
+  min-height: 100vh;
   overflow-y: auto;
 }
 
@@ -10,6 +12,24 @@ body.detail-page {
   margin: 0 auto;
   padding: 32px 20px 64px;
   color: #f3f4f6;
+}
+
+.detail-lower-background {
+  display: flow-root;
+  position: relative;
+  isolation: isolate;
+}
+
+.detail-lower-background::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 16px;
+  bottom: -64px;
+  left: 50%;
+  width: 100vw;
+  transform: translateX(-50%);
+  background: #0f1528;
 }
 
 .story-detail h1 {

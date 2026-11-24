@@ -38,13 +38,18 @@
   }
 }
 
-@media (prefers-color-scheme: dark) {
+/* Body and Color for color divider within the article source feed, og color #16171d */
+/* figure out how to create a set color divide for this via text (Adam)*/
+/*@media (prefers-color-scheme: dark) {
   :root {
     --text: #9ca3af;
     --text-h: #f3f4f6;
-    --bg: #16171d;
+    --bg: #151829;
+    background-position: center;
+    background-size: cover;
+    background-attachment: fixed;
   }
-}
+}*/
 
 * {
   box-sizing: border-box;
@@ -61,10 +66,7 @@ body {
   font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   overflow: hidden;
 
-  background-color: #e8dcc0;
-  background-image:
-    linear-gradient(rgba(36, 34, 27, 0.786), rgba(49, 48, 47, 0.752)),
-    url("../images/OldTimerNewspaper.jpg");
+  background-color: #132f4d;
   background-size: cover;
   background-position: center;
   background-attachment: fixed;
