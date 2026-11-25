@@ -17,6 +17,8 @@ from .services.story_manager import (
     cleanup_unused_article_text,
 )
 
+from .services.story_deletion import delete_story
+
 from .forms import ArticleFormSet, RevisionRejectionForm, StoryAdminForm, TagAdminForm
 
 import logging
@@ -184,6 +186,15 @@ class StoryAdmin(admin.ModelAdmin):
     Customize how stories appear in Django Admin.
     """
     form = StoryAdminForm
+
+    # Custom confirmation pages for permanent story deletion.
+    delete_confirmation_template = (
+        "admin/stories/delete_confirmation.html"
+    )
+
+    delete_selected_confirmation_template = (
+        "admin/stories/delete_selected_confirmation.html"
+    )
 
     # Register an action in the Story list's Actions dropdown.
     actions = ["approve_revision"]
@@ -505,6 +516,28 @@ class StoryAdmin(admin.ModelAdmin):
         which also creates the initial revision and article links.
         """
         return False
+
+    def delete_model(self, request, obj):
+        """
+        Delete an individual story using our custom deletion service.
+        """
+        delete_story(obj.pk)
+
+    def delete_queryset(self, request, queryset):
+        """
+        Delete multiple selected stories using our custom deletion service.
+
+        If any deletion fails, roll back the entire operation.
+        """
+        with transaction.atomic():
+            # Collect story IDs before modifying the database.
+            story_ids = list(
+                queryset.order_by("pk").values_list("pk", flat=True)
+            )
+
+            # Safely delete each selected story.
+            for story_id in story_ids:
+                delete_story(story_id)
 
     def generate_revision_view(self, request, story_id):
         """

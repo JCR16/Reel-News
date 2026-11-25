@@ -1,0 +1,27 @@
+
+{% extends "admin/delete_selected_confirmation.html" %}
+
+{% block content %}
+    <div class="messagelist">
+        <div class="warning">
+            <strong>Warning: This action is permanent.</strong>
+
+            <p>Deleting the selected stories will also delete:</p>
+
+            <ul>
+                <li>All current, published, and historical revisions.</li>
+                <li>All associated story tag relationships.</li>
+                <li>All associated revision-article relationships.</li>
+                <li>Source articles no longer referenced by any remaining story.</li>
+                <li>Stored article text and relationships belonging to deleted articles.</li>
+            </ul>
+
+            <p>
+                Articles referenced by remaining stories will be preserved.
+                Publishers, authors, and tags will also be preserved.
+            </p>
+        </div>
+    </div>
+
+    {{ block.super }}
+{% endblock %}
