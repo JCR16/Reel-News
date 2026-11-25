@@ -177,6 +177,12 @@ def generate_and_save_revision(
     # Retrieve the existing Story to identify its current revision.
     story = Story.objects.get(storyid=story_id)
 
+    # Archived stories must be restored before generating revisions.
+    if story.status == "Archived":
+        raise ValueError(
+            "Archived stories must be restored before generating revisions."
+        )
+
     # Extract the article texts for Gemini.
     article_texts = [article["text"] for article in articles]
 
@@ -200,6 +206,18 @@ def generate_and_save_revision(
 
         # Lock the Story record to prevent simultaneous revision updates.
         story = Story.objects.select_for_update().get(storyid=story_id)
+
+        # Recheck the status in case the story was archived during generation.
+        if story.status == "Archived":
+            raise ValueError(
+                "The story was archived during revision generation."
+            )
+
+        # Ensure Gemini generated content using the correct previous revision.
+        if story.currentrevisionnum != previous_revision.revisionnum:
+            raise ValueError(
+                "The current revision changed during generation."
+            )
 
         # Remember the current revision before it gets replaced.
         previous_revision_num = story.currentrevisionnum
@@ -241,6 +259,12 @@ def regenerate_rejected_revision(story_id: int) -> StoryRevision:
 
     # Retrieve the story and its most recent revision.
     story = Story.objects.get(storyid=story_id)
+
+    # Archived stories must be restored before regenerating revisions.
+    if story.status == "Archived":
+        raise ValueError(
+            "Archived stories must be restored before regenerating revisions."
+        )
 
     rejected_revision = StoryRevision.objects.get(
         storyid_id=story_id,
@@ -296,6 +320,12 @@ def regenerate_rejected_revision(story_id: int) -> StoryRevision:
 
         # Lock the story to prevent simultaneous revision updates.
         story = Story.objects.select_for_update().get(storyid=story_id)
+
+        # Recheck the status in case the story was archived during regeneration.
+        if story.status == "Archived":
+            raise ValueError(
+                "The story was archived during revision regeneration."
+            )
 
         # Ensure the rejected revision is still the current revision.
         if story.currentrevisionnum != rejected_revision.revisionnum:

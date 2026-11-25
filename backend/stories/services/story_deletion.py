@@ -11,6 +11,21 @@ from ..models import (
 )
 
 
+def can_delete_story(story):
+    """
+    Determine whether a story is eligible for permanent deletion.
+
+    Archived stories can be deleted, as can unpublished stories
+    that are still drafts or require changes.
+    """
+    return (
+        story.status == "Archived"
+        or (
+            story.status in ("Draft", "Changes Needed")
+            and story.publishedrevisionnum is None
+        )
+    )
+
 @transaction.atomic
 def delete_story(story_id):
     """
@@ -22,6 +37,13 @@ def delete_story(story_id):
 
     # Lock the story to prevent concurrent revision changes.
     story = Story.objects.select_for_update().get(pk=story_id)
+
+    # Prevent permanent deletion of ineligible stories.
+    if not can_delete_story(story):
+        raise ValueError(
+            "Only unpublished drafts, stories requiring changes, "
+            "and archived stories can be permanently deleted."
+        )
 
     # Collect every article referenced by any revision of this story.
     article_ids = list(
