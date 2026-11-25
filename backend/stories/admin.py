@@ -1,4 +1,6 @@
 from django.contrib import admin, messages
+from django.contrib.admin.actions import delete_selected
+from django.contrib.admin import helpers
 from .models import Publisher, Article, Story, StoryRevision, RevisionArticle, Tag, StoryTag
 
 from django.shortcuts import redirect, render
@@ -6,18 +8,25 @@ from django.urls import path, reverse
 from django.utils.html import format_html_join, format_html
 from django.utils.safestring import mark_safe
 from django.http import Http404, HttpResponseNotAllowed
+from django.core.exceptions import PermissionDenied
 
 from django.db import transaction
 from django.db.models import F, Q
 
+from .services.story_archiving import (
+    archive_story,
+    restore_story,
+)
 from .services.story_manager import (
     generate_and_save_story,
     generate_and_save_revision,
     regenerate_rejected_revision,
     cleanup_unused_article_text,
 )
-
-from .services.story_deletion import delete_story
+from .services.story_deletion import (
+    delete_story,
+    can_delete_story,
+)
 
 from .forms import ArticleFormSet, RevisionRejectionForm, StoryAdminForm, TagAdminForm
 
@@ -197,7 +206,12 @@ class StoryAdmin(admin.ModelAdmin):
     )
 
     # Register an action in the Story list's Actions dropdown.
-    actions = ["approve_revision"]
+    actions = [
+        "approve_revision",
+        "archive_selected_stories",
+        "restore_selected_stories",
+        "delete_selected_stories",
+    ]
 
     # Display story information, including its current headline,
     # so editors can identify stories without opening them.
@@ -334,12 +348,37 @@ class StoryAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.regenerate_rejected_view),
                 name="stories_story_regenerate_rejected",
             ),
+            # Archive an existing published story.
+            path(
+                "<int:story_id>/archive/",
+                self.admin_site.admin_view(self.archive_story_view),
+                name="stories_story_archive",
+            ),
+
+            # Restore an archived story.
+            path(
+                "<int:story_id>/restore/",
+                self.admin_site.admin_view(self.restore_story_view),
+                name="stories_story_restore",
+            ),
 
         ]
 
         # Custom URLs must come before Django's default URLs.
         return custom_urls + urls
 
+    def get_actions(self, request):
+        """
+        Replace Django's default bulk deletion action with
+        our lifecycle-aware deletion action.
+        """
+
+        actions = super().get_actions(request)
+
+        # Remove Django's original bulk deletion action.
+        actions.pop("delete_selected", None)
+
+        return actions
 
     def generate_story_view(self, request):
         """
@@ -516,6 +555,66 @@ class StoryAdmin(admin.ModelAdmin):
         which also creates the initial revision and article links.
         """
         return False
+
+    def has_change_permission(self, request, obj=None):
+        """
+        Prevent administrators from modifying archived stories.
+
+        Archived stories remain viewable but must be restored
+        before any editorial changes can be made.
+        """
+
+        # Prevent changes to individual archived stories.
+        if obj is not None and obj.status == "Archived":
+            return False
+
+        # Preserve Django's normal permission checks.
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        """
+        Only allow permanent deletion of eligible stories.
+
+        Published stories must be archived before deletion.
+        """
+
+        # Preserve Django's normal deletion permission checks.
+        if not super().has_delete_permission(request, obj):
+            return False
+
+        # Allow model-level permission checks for bulk actions.
+        if obj is None:
+            return True
+
+        # Enforce our story lifecycle deletion rules.
+        return can_delete_story(obj)
+
+    def changeform_view(
+        self, request, object_id=None, form_url="", extra_context=None
+    ):
+        """
+        Lock existing stories during form submissions to prevent
+        concurrent archiving or editorial changes.
+        """
+
+        # Viewing a story does not require a database lock.
+        if request.method != "POST" or object_id is None:
+            return super().changeform_view(
+                request, object_id, form_url, extra_context
+            )
+
+        with transaction.atomic():
+
+            # Lock the story before Django retrieves it and checks
+            # whether the administrator has permission to modify it.
+            Story.objects.select_for_update().filter(
+                pk=object_id
+            ).first()
+
+            # Process the form while holding the story lock.
+            return super().changeform_view(
+                request, object_id, form_url, extra_context
+            )
 
     def delete_model(self, request, obj):
         """
@@ -709,8 +808,12 @@ class StoryAdmin(admin.ModelAdmin):
                     revisionnum=locked_story.currentrevisionnum
                 ).first()
 
+                # Archived stories must be restored before approving revisions.
+                if locked_story.status == "Archived":
+                    continue
+
                 # Only Draft revisions can be approved.
-                if revision is None or revision.status not in ("Draft"):
+                if revision is None or revision.status != "Draft":
                     continue
 
                 # Mark this revision as approved.
@@ -746,6 +849,147 @@ class StoryAdmin(admin.ModelAdmin):
             messages.SUCCESS,
         )
 
+    @admin.action(
+        permissions=["change"],
+        description="Archive selected stories",
+    )
+    def archive_selected_stories(self, request, queryset):
+        """
+        Archive selected published stories while preserving
+        their revisions and associated metadata.
+        """
+
+        archived = 0
+        skipped = 0
+
+        for story in queryset:
+            try:
+                # Archive the story using the existing service.
+                archive_story(story.pk)
+                archived += 1
+
+            except (ValueError, Story.DoesNotExist):
+                # Skip stories that are no longer eligible or available.
+                skipped += 1
+
+        if archived:
+            self.message_user(
+                request,
+                f"{archived} story(s) successfully archived.",
+                messages.SUCCESS,
+            )
+
+        if skipped:
+            self.message_user(
+                request,
+                f"{skipped} story(s) skipped because they could not be archived.",
+                messages.WARNING,
+            )
+
+    @admin.action(
+        permissions=["change"],
+        description="Restore selected stories",
+    )
+    def restore_selected_stories(self, request, queryset):
+        """
+        Restore selected archived stories to their published state.
+        """
+
+        restored = 0
+        skipped = 0
+
+        for story in queryset:
+            try:
+                # Restore the story using the existing service.
+                restore_story(story.pk)
+                restored += 1
+
+            except (ValueError, Story.DoesNotExist):
+                # Skip stories that are no longer eligible or available.
+                skipped += 1
+
+        if restored:
+            self.message_user(
+                request,
+                f"{restored} story(s) successfully restored.",
+                messages.SUCCESS,
+            )
+
+        if skipped:
+            self.message_user(
+                request,
+                f"{skipped} story(s) skipped because they could not be restored.",
+                messages.WARNING,
+            )
+
+    @admin.action(
+        permissions=["delete"],
+        description="Delete selected stories",
+    )
+    def delete_selected_stories(self, request, queryset):
+        """
+        Permanently delete eligible selected stories while
+        skipping stories that cannot be deleted.
+        """
+
+        with transaction.atomic():
+
+            # Determine whether the administrator confirmed deletion.
+            confirmed = request.POST.get("post") == "yes"
+
+            # Lock the selected stories during confirmed deletion.
+            if confirmed:
+                queryset = queryset.select_for_update()
+
+            eligible_ids = []
+            skipped_stories = []
+
+            # Evaluate stories in a consistent order.
+            for story in queryset.order_by("pk"):
+                if self.has_delete_permission(request, story):
+                    eligible_ids.append(story.pk)
+                else:
+                    skipped_stories.append(story)
+
+            # Stop if none of the selected stories can be deleted.
+            if not eligible_ids:
+                self.message_user(
+                    request,
+                    "None of the selected stories are eligible for deletion. "
+                    "Published stories must be archived first.",
+                    messages.WARNING,
+                )
+                return None
+
+            # Pass only eligible stories to Django's deletion action.
+            eligible_queryset = queryset.filter(pk__in=eligible_ids)
+
+            response = delete_selected(
+                self, request, eligible_queryset
+            )
+
+            # Add skipped stories to the confirmation page.
+            if not confirmed and response is not None:
+                response.context_data["skipped_stories"] = skipped_stories
+                response.context_data["skipped_count"] = len(skipped_stories)
+                response.context_data["eligible_count"] = len(eligible_ids)
+
+                # Preserve the custom action for the confirmation POST.
+                response.context_data["bulk_delete_action"] = (
+                    "delete_selected_stories"
+                )
+
+            # Report stories skipped during confirmed deletion.
+            elif confirmed and skipped_stories:
+                self.message_user(
+                    request,
+                    f"{len(skipped_stories)} story(s) skipped because "
+                    "they were not eligible for deletion.",
+                    messages.WARNING,
+                )
+
+            return response
+
     def approve_revision_view(self, request, story_id):
         """
         Approve the current revision of a story from its Admin page.
@@ -765,13 +1009,24 @@ class StoryAdmin(admin.ModelAdmin):
             if story is None:
                 raise Http404("Story not found")
 
+            # Prevent approval of revisions belonging to archived stories.
+            if story.status == "Archived":
+                messages.error(
+                    request,
+                    "Archived stories must be restored before approving revisions."
+                )
+
+                return redirect(
+                    reverse("admin:stories_story_change", args=[story_id])
+                )
+
             # Retrieve the current revision.
             revision = story.revisions.filter(
                 revisionnum=story.currentrevisionnum
             ).first()
 
             # Only Draft revisions can be approved.
-            if revision is None or revision.status not in ("Draft"):
+            if revision is None or revision.status != "Draft":
                 messages.error(
                     request,
                     "Only Draft revisions can be approved."
@@ -826,6 +1081,17 @@ class StoryAdmin(admin.ModelAdmin):
 
         story = get_object_or_404(Story, pk=story_id)
 
+        # Prevent archived stories from entering the rejection workflow.
+        if story.status == "Archived":
+            messages.error(
+                request,
+                "Archived stories must be restored before rejecting revisions."
+            )
+
+            return redirect(
+                reverse("admin:stories_story_change", args=[story_id])
+            )
+
         revision = story.revisions.filter(
             revisionnum=story.currentrevisionnum
         ).first()
@@ -852,6 +1118,18 @@ class StoryAdmin(admin.ModelAdmin):
                     story = Story.objects.select_for_update().get(
                         pk=story_id
                     )
+
+                    # Recheck the status in case the story was archived
+                    # while the administrator was completing the rejection form.
+                    if story.status == "Archived":
+                        messages.error(
+                            request,
+                            "This story has been archived and cannot be rejected."
+                        )
+
+                        return redirect(
+                            reverse("admin:stories_story_change", args=[story_id])
+                        )
 
                     # Recheck the revision after acquiring the lock.
                     revision = story.revisions.get(
@@ -930,6 +1208,11 @@ class StoryAdmin(admin.ModelAdmin):
             extra_context["current_review_feedback"] = (
                 revision.reviewfeedback if revision else ""
             )
+            # Check normal change permissions independently of archive restrictions.
+            extra_context["can_manage_archive"] = (
+                story is not None
+                and super().has_change_permission(request, story)
+            )
 
         return super().change_view(
             request,
@@ -1004,6 +1287,86 @@ class StoryAdmin(admin.ModelAdmin):
             return revision.reviewfeedback
 
         return "No review feedback available"
+
+    def archive_story_view(self, request, story_id):
+        """
+        Archive a published story while preserving its revisions,
+        source articles, and associated metadata.
+        """
+
+        # Only POST requests can modify the database.
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+
+        # Retrieve the requested story.
+        story = self.get_object(request, str(story_id))
+
+        if story is None:
+            raise Http404("Story not found")
+
+        # Require the administrator's normal change permission.
+        if not super().has_change_permission(request, story):
+            raise PermissionDenied
+
+        try:
+            # Archive the story using the existing service.
+            archive_story(story_id)
+
+            messages.success(
+                request,
+                f"Story {story_id} was successfully archived."
+            )
+
+        except ValueError as error:
+            messages.error(request, str(error))
+
+        except Story.DoesNotExist:
+            raise Http404("Story not found")
+
+        # Return to the Story page.
+        return redirect(
+            reverse("admin:stories_story_change", args=[story_id])
+        )
+
+    def restore_story_view(self, request, story_id):
+        """
+        Restore an archived story to its published state.
+        """
+
+        # Only POST requests can modify the database.
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+
+        # Retrieve the requested story.
+        story = self.get_object(request, str(story_id))
+
+        if story is None:
+            raise Http404("Story not found")
+
+        # Check the underlying change permission because our
+        # overridden method prevents changes to archived stories.
+        if not super().has_change_permission(request, story):
+            raise PermissionDenied
+
+        try:
+            # Restore the story using the existing service.
+            restore_story(story_id)
+
+            messages.success(
+                request,
+                f"Story {story_id} was successfully restored."
+            )
+
+        except ValueError as error:
+            messages.error(request, str(error))
+
+        except Story.DoesNotExist:
+            raise Http404("Story not found")
+
+        # Return to the Story page.
+        return redirect(
+            reverse("admin:stories_story_change", args=[story_id])
+        )
 
     def save_model(self, request, obj, form, change):
         """

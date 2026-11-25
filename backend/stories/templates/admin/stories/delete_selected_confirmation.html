@@ -2,11 +2,41 @@
 {% extends "admin/delete_selected_confirmation.html" %}
 
 {% block content %}
+
+    <h2>Deletion Overview</h2>
+
+    <p>
+        <strong>{{ eligible_count }}</strong> story(s) will be permanently deleted.
+    </p>
+
+    {% if skipped_stories %}
+        <div class="messagelist">
+            <div class="warning">
+                <strong>
+                    {{ skipped_count }} story(s) will be skipped.
+                </strong>
+
+                <p>
+                    The following stories are not eligible for deletion.
+                    Published stories must be archived first.
+                </p>
+
+                <ul>
+                    {% for story in skipped_stories %}
+                        <li>{{ story }} ({{ story.status }})</li>
+                    {% endfor %}
+                </ul>
+
+                <p>These stories will remain unchanged.</p>
+            </div>
+        </div>
+    {% endif %}
+
     <div class="messagelist">
         <div class="warning">
             <strong>Warning: This action is permanent.</strong>
 
-            <p>Deleting the selected stories will also delete:</p>
+            <p>Deleting the eligible stories will also delete:</p>
 
             <ul>
                 <li>All current, published, and historical revisions.</li>
@@ -24,4 +54,16 @@
     </div>
 
     {{ block.super }}
+
+    <!-- Submit confirmation to our custom deletion action. -->
+    <script>
+        const actionInput = document.querySelector(
+            'form input[name="action"][value="delete_selected"]'
+        );
+
+        if (actionInput) {
+            actionInput.value = "delete_selected_stories";
+        }
+    </script>
+
 {% endblock %}

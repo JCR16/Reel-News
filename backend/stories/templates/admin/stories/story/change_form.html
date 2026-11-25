@@ -5,51 +5,96 @@
 
     {% if original %}
 
-        <!-- Open the complete Reel News revision history. -->
+        <!-- Revision history remains accessible regardless of status. -->
         <li>
             <a href="{% url 'admin:stories_story_revision_history' original.storyid %}">
                 Revision History
             </a>
         </li>
 
-        <!-- Generate a new revision for this story. -->
-        <li>
-            <a href="{% url 'admin:stories_story_generate_revision' original.storyid %}">
-                Generate Revision
-            </a>
-        </li>
+        {% if original.status == "Archived" %}
 
-        <!-- Review actions are only available for revisions Under Review. -->
-        {% if current_revision_status == "Draft" %}
+            <!-- Archived stories must be restored before editing. -->
+            {% if can_manage_archive %}
+                <li>
+                    <form
+                        method="post"
+                        action="{% url 'admin:stories_story_restore' original.storyid %}"
+                    >
+                        {% csrf_token %}
+                        <button type="submit">
+                            Restore Story
+                        </button>
+                    </form>
+                </li>
+            {% endif %}
 
+        {% elif has_change_permission %}
+
+            <!-- Generate a new revision for an active story. -->
             <li>
-                <form
-                    method="post"
-                    action="{% url 'admin:stories_story_approve_revision' original.storyid %}"
-                >
-                    {% csrf_token %}
-                    <button type="submit">
-                        Approve Revision
-                    </button>
-                </form>
-            </li>
-
-            <li>
-                <a href="{% url 'admin:stories_story_reject_revision' original.storyid %}">
-                    Reject Revision
+                <a href="{% url 'admin:stories_story_generate_revision' original.storyid %}">
+                    Generate Revision
                 </a>
             </li>
 
-        {% endif %}
-        {% if current_revision_status == "Rejected" %}
-            <li>
-                <form method="post" action="{% url 'admin:stories_story_regenerate_rejected' original.storyid %}">
-                    {% csrf_token %}
-                    <button type="submit" class="button">
-                        Regenerate with Feedback
-                    </button>
-                </form>
-            </li>
+            <!-- Review actions are only available for Draft revisions. -->
+            {% if current_revision_status == "Draft" %}
+
+                <li>
+                    <form
+                        method="post"
+                        action="{% url 'admin:stories_story_approve_revision' original.storyid %}"
+                    >
+                        {% csrf_token %}
+                        <button type="submit">
+                            Approve Revision
+                        </button>
+                    </form>
+                </li>
+
+                <li>
+                    <a href="{% url 'admin:stories_story_reject_revision' original.storyid %}">
+                        Reject Revision
+                    </a>
+                </li>
+
+            {% endif %}
+
+            <!-- Regeneration is only available for rejected revisions. -->
+            {% if current_revision_status == "Rejected" %}
+
+                <li>
+                    <form
+                        method="post"
+                        action="{% url 'admin:stories_story_regenerate_rejected' original.storyid %}"
+                    >
+                        {% csrf_token %}
+                        <button type="submit" class="button">
+                            Regenerate with Feedback
+                        </button>
+                    </form>
+                </li>
+
+            {% endif %}
+
+            <!-- Only published stories can be archived. -->
+            {% if original.status == "Published" %}
+
+                <li>
+                    <form
+                        method="post"
+                        action="{% url 'admin:stories_story_archive' original.storyid %}"
+                    >
+                        {% csrf_token %}
+                        <button type="submit">
+                            Archive Story
+                        </button>
+                    </form>
+                </li>
+
+            {% endif %}
+
         {% endif %}
 
     {% endif %}
