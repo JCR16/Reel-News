@@ -54,6 +54,22 @@ class Story(models.Model):
         null=True
     )
 
+    def __str__(self):
+        """
+        Display the story's ID and current revision headline.
+        """
+
+        if self.pk and self.currentrevisionnum is not None:
+            revision = self.revisions.filter(
+                revisionnum=self.currentrevisionnum
+            ).first()
+
+            if revision and revision.headline:
+                return f"Story {self.pk}: {revision.headline}"
+
+        # Fall back to the Story ID if no headline is available.
+        return f"Story {self.pk}"
+
     class Meta:
         managed = False
         db_table = "story"
@@ -130,7 +146,6 @@ class Publisher(models.Model):
     def __str__(self):
         # Display the publisher's name instead of "Publisher object (ID)".
         return self.name or f"Publisher {self.publisherid}"
-
 
     class Meta:
         managed = False
@@ -291,3 +306,96 @@ class StoryTag(models.Model):
     class Meta:
         managed = False
         db_table = "story_tag"
+
+
+
+class Author(models.Model):
+    """
+    Represents an author of one or more source articles.
+    """
+
+    authorid = models.AutoField(
+        db_column="authorID",
+        primary_key=True,
+    )
+
+    firstname = models.CharField(
+        db_column="firstName",
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+
+    lastname = models.CharField(
+        db_column="lastName",
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+
+    def __str__(self):
+        # Display the author's full name when available.
+        name = f"{self.firstname or ''} {self.lastname or ''}".strip()
+        return name or f"Author {self.authorid}"
+
+    class Meta:
+        managed = False
+        db_table = "author"
+
+
+class ArticleAuthor(models.Model):
+    """
+    Junction table connecting articles to their authors.
+
+    An article can have multiple authors, and an author
+    can contribute to multiple articles.
+    """
+
+    pk = models.CompositePrimaryKey("articleid", "authorid")
+
+    articleid = models.ForeignKey(
+        Article,
+        models.DO_NOTHING,
+        db_column="articleID",
+        related_name="author_links",
+    )
+
+    authorid = models.ForeignKey(
+        Author,
+        models.DO_NOTHING,
+        db_column="authorID",
+        related_name="article_links",
+    )
+
+    class Meta:
+        managed = False
+        db_table = "article_author"
+
+
+class ArticleTag(models.Model):
+    """
+    Junction table connecting articles to tags.
+
+    Reserved for future functionality, such as automated
+    article categorization and clustering.
+    """
+
+    pk = models.CompositePrimaryKey("articleid", "tagid")
+
+    articleid = models.ForeignKey(
+        Article,
+        models.DO_NOTHING,
+        db_column="articleID",
+        related_name="tag_links",
+    )
+
+    tagid = models.ForeignKey(
+        Tag,
+        models.DO_NOTHING,
+        db_column="tagID",
+        related_name="article_links",
+    )
+
+    class Meta:
+        managed = False
+        db_table = "article_tag"
