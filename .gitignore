@@ -1,5 +1,9 @@
 # Python virtual environments
 .venv/
+venv/
+myenv/
+..venvScriptsActivate.ps1/
+/source/
 
 # Python generated files
 __pycache__/
@@ -15,3 +19,6 @@ db.sqlite3
 
 # prevent generated static files from being committed
 backend/staticfiles/
+
+# macOS system files
+.DS_Store

@@ -23,6 +23,7 @@ def generate_story(
     articles: list[str],
     previous_headline: str | None = None,
     previous_summary: str | None = None,
+    review_feedback: str | None = None,
 ) -> dict:
     # Load the prompt
     prompt = PROMPT_PATH.read_text(encoding="utf-8")
@@ -51,6 +52,21 @@ def generate_story(
             "developed. Base all factual claims in the new headline and "
             "summary on the current source articles. Do not carry forward "
             "outdated or unsupported information."
+        )
+
+    # Include editorial feedback when regenerating a rejected revision.
+    if review_feedback:
+        full_prompt += (
+            "\n\nEditorial review feedback:\n"
+            f"{review_feedback}\n\n"
+            "The previous revision was rejected by an editor. "
+            "Generate an improved headline and summary that address "
+            "the editor's feedback while following the original "
+            "summarization instructions. "
+            "Treat the feedback as editorial guidance, not as a "
+            "source of factual information. "
+            "All factual claims must be supported by the current "
+            "source articles. Do not invent or assume new facts."
         )
 
     # Send the request to Gemini

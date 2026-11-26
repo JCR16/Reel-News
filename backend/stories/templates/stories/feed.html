@@ -1,14 +1,14 @@
-
 {% load static %}
 <!DOCTYPE html>
 <html lang="en">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
     <title>Reel News</title>
 
     <!-- Reel News CSS -->
@@ -17,6 +17,17 @@
 </head>
 
 <body>
+    <nav class="account-bar">
+    {% if user.is_authenticated %}
+        <span class="account-name">{{ user.username }}</span>
+        <form method="post" action="{% url 'logout' %}">
+            {% csrf_token %}
+            <button type="submit" class="account-link">Log out</button>
+        </form>
+    {% else %}
+        <a href="{% url 'login' %}" class="account-link">Log in</a>
+    {% endif %}
+    </nav>
     <section id="center">
         <div class="feed">
 
@@ -29,7 +40,7 @@
                 {% else %}
                 <section
                     class="article-card"
-                    style="background-image: url('https://images.unsplash.com/photo-1603484477859-abe6a73f9366?w=1200');" 
+                    style="background-image: url('https://images.unsplash.com/photo-1603484477859-abe6a73f9366?w=1200');"
                 >
                 {% endif %}
                 <div class="article-text">
@@ -56,6 +67,7 @@
 
         </div>
     </section>
+    
 </body>
 
 </html>

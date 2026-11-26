@@ -27,6 +27,11 @@ class Story(models.Model):
         blank=True,
         null=True,
     )
+    publishedrevisionnum = models.IntegerField(
+        db_column="publishedRevisionNum",
+        blank=True,
+        null=True
+    )
     datecreated = models.DateTimeField(
         db_column="dateCreated",
         blank=True,
@@ -48,6 +53,22 @@ class Story(models.Model):
         blank=True,
         null=True
     )
+
+    def __str__(self):
+        """
+        Display the story's ID and current revision headline.
+        """
+
+        if self.pk and self.currentrevisionnum is not None:
+            revision = self.revisions.filter(
+                revisionnum=self.currentrevisionnum
+            ).first()
+
+            if revision and revision.headline:
+                return f"Story {self.pk}: {revision.headline}"
+
+        # Fall back to the Story ID if no headline is available.
+        return f"Story {self.pk}"
 
     class Meta:
         managed = False
@@ -76,6 +97,15 @@ class StoryRevision(models.Model):
         db_column="changeNote",
         blank=True,
         null=True,
+    )
+    status = models.CharField(
+        max_length=20,
+        default="Draft"
+    )
+    reviewfeedback = models.TextField(
+        db_column="reviewFeedback",
+        blank=True,
+        null=True
     )
 
     class Meta:
@@ -112,6 +142,10 @@ class Publisher(models.Model):
         blank=True,
         null=True,
     )
+
+    def __str__(self):
+        # Display the publisher's name instead of "Publisher object (ID)".
+        return self.name or f"Publisher {self.publisherid}"
 
     class Meta:
         managed = False
@@ -171,7 +205,7 @@ class Article(models.Model):
         managed = False
         db_table = "article"
 
-
+        
 
 class RevisionArticle(models.Model):
     pk = models.CompositePrimaryKey(
@@ -196,3 +230,172 @@ class RevisionArticle(models.Model):
     class Meta:
         managed = False
         db_table = "revision_article"
+
+
+
+class ArticleText(models.Model):
+    articleid = models.OneToOneField(
+        Article,
+        models.CASCADE,
+        db_column="articleID",
+        primary_key=True
+    )
+    text = models.TextField()
+
+    class Meta:
+        managed = False
+        db_table = "article_text"
+
+class Tag(models.Model):
+    """
+    Represents a category or topic that can be assigned to stories.
+
+    Examples: Politics, Technology, World News.
+    """
+
+    # PostgreSQL automatically generates unique tag IDs.
+    tagid = models.AutoField(
+        db_column="tagID",
+        primary_key=True,
+    )
+
+    name = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+
+    description = models.TextField(
+        blank=True,
+        null=True,
+    )
+
+    def __str__(self):
+        # Display the tag name in Django Admin.
+        return self.name or f"Tag {self.tagid}"
+
+    class Meta:
+        managed = False
+        db_table = "tag"
+
+class StoryTag(models.Model):
+    """
+    Junction table connecting stories and tags.
+
+    A story can have multiple tags, and the same tag
+    can be assigned to multiple stories.
+    """
+
+    # Prevent duplicate story/tag combinations.
+    pk = models.CompositePrimaryKey("storyid", "tagid")
+
+    storyid = models.ForeignKey(
+        Story,
+        models.DO_NOTHING,
+        db_column="storyID",
+        related_name="tag_links",
+    )
+
+    tagid = models.ForeignKey(
+        Tag,
+        models.DO_NOTHING,
+        db_column="tagID",
+        related_name="story_links",
+    )
+
+    class Meta:
+        managed = False
+        db_table = "story_tag"
+
+
+
+class Author(models.Model):
+    """
+    Represents an author of one or more source articles.
+    """
+
+    authorid = models.AutoField(
+        db_column="authorID",
+        primary_key=True,
+    )
+
+    firstname = models.CharField(
+        db_column="firstName",
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+
+    lastname = models.CharField(
+        db_column="lastName",
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+
+    def __str__(self):
+        # Display the author's full name when available.
+        name = f"{self.firstname or ''} {self.lastname or ''}".strip()
+        return name or f"Author {self.authorid}"
+
+    class Meta:
+        managed = False
+        db_table = "author"
+
+
+class ArticleAuthor(models.Model):
+    """
+    Junction table connecting articles to their authors.
+
+    An article can have multiple authors, and an author
+    can contribute to multiple articles.
+    """
+
+    pk = models.CompositePrimaryKey("articleid", "authorid")
+
+    articleid = models.ForeignKey(
+        Article,
+        models.DO_NOTHING,
+        db_column="articleID",
+        related_name="author_links",
+    )
+
+    authorid = models.ForeignKey(
+        Author,
+        models.DO_NOTHING,
+        db_column="authorID",
+        related_name="article_links",
+    )
+
+    class Meta:
+        managed = False
+        db_table = "article_author"
+
+
+class ArticleTag(models.Model):
+    """
+    Junction table connecting articles to tags.
+
+    Reserved for future functionality, such as automated
+    article categorization and clustering.
+    """
+
+    pk = models.CompositePrimaryKey("articleid", "tagid")
+
+    articleid = models.ForeignKey(
+        Article,
+        models.DO_NOTHING,
+        db_column="articleID",
+        related_name="tag_links",
+    )
+
+    tagid = models.ForeignKey(
+        Tag,
+        models.DO_NOTHING,
+        db_column="tagID",
+        related_name="article_links",
+    )
+
+    class Meta:
+        managed = False
+        db_table = "article_tag"

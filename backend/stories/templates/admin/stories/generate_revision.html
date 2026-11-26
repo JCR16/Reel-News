@@ -1,0 +1,86 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+
+<p>
+    Enter the current source articles for this story.
+    Gemini will use these articles to generate an updated
+    headline and summary.
+</p>
+
+<p>
+    <strong>Current Revision:</strong>
+    {{ story.currentrevisionnum }}
+</p>
+
+<form method="post">
+    {% csrf_token %}
+
+    <!-- Required hidden fields for Django's formset. -->
+    {{ formset.management_form }}
+
+    <!-- Container for all article input forms. -->
+    <div id="article-forms">
+        {% for form in formset %}
+            <fieldset class="module aligned">
+                <h2>Article {{ forloop.counter }}</h2>
+
+                {{ form.non_field_errors }}
+                {{ form.as_p }}
+            </fieldset>
+        {% endfor %}
+    </div>
+
+    <!-- Blank form used when adding more articles. -->
+    <template id="empty-article-form">
+        <fieldset class="module aligned">
+            <h2>Article __number__</h2>
+
+            {{ formset.empty_form.as_p }}
+        </fieldset>
+    </template>
+
+    <!-- Add another article without reloading the page. -->
+    <button type="button" id="add-article">
+        + Add Article
+    </button>
+
+    <div class="submit-row">
+        <input
+            type="submit"
+            value="Generate Revision"
+            class="default"
+        >
+    </div>
+</form>
+
+<script>
+    // Find the article form controls.
+    const addArticleButton = document.getElementById("add-article");
+    const articleContainer = document.getElementById("article-forms");
+    const emptyFormTemplate = document.getElementById("empty-article-form");
+
+    // Django tracks the total number of forms with this field.
+    const totalFormsInput = document.querySelector(
+        'input[name="form-TOTAL_FORMS"]'
+    );
+
+    // Create a new article form when the button is clicked.
+    addArticleButton.addEventListener("click", function () {
+        const formIndex = Number(totalFormsInput.value);
+
+        // Copy the empty form and assign its unique field indexes.
+        let newFormHTML = emptyFormTemplate.innerHTML;
+
+        newFormHTML = newFormHTML.replaceAll("__prefix__", formIndex);
+        newFormHTML = newFormHTML.replaceAll("__number__", formIndex + 1);
+
+        // Display the new article inputs.
+        articleContainer.insertAdjacentHTML("beforeend", newFormHTML);
+
+        // Update the form count so Django validates the new article.
+        totalFormsInput.value = formIndex + 1;
+    });
+</script>
+
+{% endblock %}
