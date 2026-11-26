@@ -47,6 +47,14 @@
                         action="{% url 'admin:stories_story_approve_revision' original.storyid %}"
                     >
                         {% csrf_token %}
+
+                        <!-- Identify the revision the administrator reviewed. -->
+                        <input
+                            type="hidden"
+                            name="expected_revision_num"
+                            value="{{ original.currentrevisionnum }}"
+                        >
+
                         <button type="submit">
                             Approve Revision
                         </button>
@@ -54,7 +62,7 @@
                 </li>
 
                 <li>
-                    <a href="{% url 'admin:stories_story_reject_revision' original.storyid %}">
+                    <a href="{% url 'admin:stories_story_reject_revision' original.storyid %}?expected_revision_num={{ original.currentrevisionnum }}">
                         Reject Revision
                     </a>
                 </li>
@@ -70,6 +78,14 @@
                         action="{% url 'admin:stories_story_regenerate_rejected' original.storyid %}"
                     >
                         {% csrf_token %}
+
+                        <!-- Identify the rejected revision being regenerated. -->
+                        <input
+                            type="hidden"
+                            name="expected_revision_num"
+                            value="{{ original.currentrevisionnum }}"
+                        >
+
                         <button type="submit" class="button">
                             Regenerate with Feedback
                         </button>

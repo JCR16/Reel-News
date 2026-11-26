@@ -42,6 +42,13 @@ class RevisionRejectionForm(forms.Form):
     Collect feedback explaining why a revision was rejected.
     """
 
+    # Track which revision the administrator intends to reject.
+    expected_revision_num = forms.IntegerField(
+        widget=forms.HiddenInput(),
+        min_value=1,
+        required=True,
+    )
+
     feedback = forms.CharField(
         label="Reason for Rejection",
         widget=forms.Textarea(
@@ -104,6 +111,12 @@ class StoryAdminForm(forms.ModelForm):
         required=False,
     )
 
+    # Track the revision status when the administrator opens the form.
+    editing_revision_status = forms.CharField(
+        widget=forms.HiddenInput(),
+        required=False,
+    )
+
     review_feedback = forms.CharField(
         label="Current Revision Review Feedback",
         widget=forms.Textarea(attrs={"rows": 4}),
@@ -129,31 +142,39 @@ class StoryAdminForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
 
         # Preselect the tags already associated with this story.
-        if self.instance.pk:
+        if self.instance.pk and "tags" in self.fields:
             self.fields["tags"].initial = Tag.objects.filter(
                 story_links__storyid=self.instance
             )
 
-        # Record the revision number when the administrator opens the form.
-        if self.instance.pk:
+        # Record the revision number when opening an editable form.
+        if self.instance.pk and "editing_revision" in self.fields:
             self.fields["editing_revision"].initial = (
                 self.instance.currentrevisionnum
             )
 
-        # Populate the field with the current revision's feedback.
+        # Retrieve the current revision.
         if self.instance.pk and self.instance.currentrevisionnum:
             revision = self.instance.revisions.filter(
                 revisionnum=self.instance.currentrevisionnum
             ).first()
 
             if revision:
-                self.fields["review_feedback"].initial = (
-                    revision.reviewfeedback or ""
-                )
+                # Store the revision status for stale-form validation.
+                if "editing_revision_status" in self.fields:
+                    self.fields["editing_revision_status"].initial = (
+                        revision.status
+                    )
 
-                # Only rejected revisions can have editable feedback.
-                if revision.status != "Rejected":
-                    self.fields["review_feedback"].disabled = True
+                # Populate editable feedback when the field is available.
+                if "review_feedback" in self.fields:
+                    self.fields["review_feedback"].initial = (
+                        revision.reviewfeedback or ""
+                    )
+
+                    # Only rejected revisions can have editable feedback.
+                    if revision.status != "Rejected":
+                        self.fields["review_feedback"].disabled = True
 
     def clean(self):
         """
@@ -184,5 +205,35 @@ class StoryAdminForm(forms.ModelForm):
                 "This story has been updated since you opened this page. "
                 "Please refresh the page before saving your changes."
             )
+
+        # Retrieve the current revision's latest status.
+        revision = self.instance.revisions.filter(
+            revisionnum=current_revision
+        ).first()
+
+        # Prevent saving if the revision status has changed.
+        if (
+            revision is None
+            or cleaned_data.get("editing_revision_status") != revision.status
+        ):
+            raise forms.ValidationError(
+                "This story has been updated since you opened this page. "
+                "Please refresh the page before saving your changes."
+            )
+
+        # Validate feedback eligibility before saving the story.
+        if "review_feedback" in self.changed_data:
+
+            # Retrieve the revision associated with the submitted form.
+            revision = self.instance.revisions.filter(
+                revisionnum=editing_revision
+            ).first()
+
+            # Only rejected revisions can have their feedback modified.
+            if revision is None or revision.status != "Rejected":
+                raise forms.ValidationError(
+                    "Review feedback can only be updated "
+                    "on Rejected revisions."
+                )
 
         return cleaned_data
