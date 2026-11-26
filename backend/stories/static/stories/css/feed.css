@@ -130,6 +130,11 @@
   justify-self: center;
   position: relative;
   z-index: 1;
+
+  /* Arrange action buttons horizontally */
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .category {
@@ -184,3 +189,41 @@
 }
 
 .account-link:hover { background: rgba(0, 0, 0, 0.7); }
+
+/* Bookmark toggle button */
+.bookmark-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+/* Highlight the button when hovered */
+.bookmark-button:hover {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+/* Fill the icon when the story is bookmarked */
+.bookmark-button[aria-pressed="true"] svg {
+  fill: currentColor;
+}
+
+/* Provide visual feedback for keyboard navigation */
+.bookmark-button:focus-visible {
+  outline: 2px solid white;
+  outline-offset: 3px;
+}
+
+/* Indicate that a bookmark request is processing */
+.bookmark-button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
