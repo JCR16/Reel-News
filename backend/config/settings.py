@@ -192,3 +192,6 @@ MAILERS = {
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "feed"
 LOGOUT_REDIRECT_URL = "feed"
+
+# Use the Reel News custom test runner for readable test output
+TEST_RUNNER = "config.test_runner.ReelNewsTestRunner"

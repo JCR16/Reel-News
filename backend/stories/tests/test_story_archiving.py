@@ -21,6 +21,8 @@ from stories.services.story_archiving import archive_story, restore_story
 
 class StoryArchivingTests(SimpleTestCase):
 
+    section_name = "Story Archiving and Restoration"
+
     def setUp(self):
         # Create a mock story with an existing published revision
         self.story = MagicMock(spec=Story)

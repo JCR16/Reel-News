@@ -26,6 +26,8 @@ from stories.services.story_deletion import (
 
 class StoryDeletionEligibilityTests(SimpleTestCase):
 
+    section_name = "Story Deletion Eligibility"
+
     def setUp(self):
         # Create a mock story for eligibility testing
         self.story = MagicMock(spec=Story)
@@ -91,6 +93,8 @@ class StoryDeletionEligibilityTests(SimpleTestCase):
 
 
 class StoryDeletionTests(SimpleTestCase):
+
+    section_name = "Permanent Story Deletion"
 
     def setUp(self):
         # Create a mock archived story with existing revisions
@@ -475,6 +479,8 @@ class StoryDeletionTests(SimpleTestCase):
 
 
 class StoryDeletionCascadeTests(SimpleTestCase):
+
+    section_name = "Cascading Deletion Configuration"
 
     def test_article_text_cascades_on_article_deletion(self):
 

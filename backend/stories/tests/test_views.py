@@ -20,6 +20,8 @@ from stories.views import feed
 
 class FeedViewTests(SimpleTestCase):
 
+    section_name = "Story Feed Views"
+
     def setUp(self):
         # Create a request factory for each test
         self.factory = RequestFactory()
