@@ -156,3 +156,31 @@
     font-size: clamp(28px, 8vw, 36px);
   }
 }
+
+.account-bar {
+  position: fixed;
+  top: 14px;
+  right: 16px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #fff;
+  font-size: 14px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.account-bar form { margin: 0; }
+
+.account-link {
+  padding: 6px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.account-link:hover { background: rgba(0, 0, 0, 0.7); }
