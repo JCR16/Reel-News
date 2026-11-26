@@ -43,6 +43,13 @@
             <strong>Summary:</strong>
             {{ revision.summary }}
         </p>
+        <!-- Display saved editorial feedback for rejected revisions. -->
+        {% if revision.status == "Rejected" and revision.reviewfeedback %}
+            <p>
+                <strong>Review Feedback:</strong>
+                {{ revision.reviewfeedback|linebreaksbr }}
+            </p>
+        {% endif %}
 
         <!-- Display the source articles used for this revision. -->
         <h3>Source Articles</h3>

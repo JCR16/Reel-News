@@ -249,7 +249,7 @@ def generate_and_save_revision(
     # Return the newly created revision.
     return revision
 
-def regenerate_rejected_revision(story_id: int) -> StoryRevision:
+def regenerate_rejected_revision( story_id: int, expected_revision_num: int ) -> StoryRevision:
     """
     Regenerate a rejected revision using its original source articles,
     rejected headline/summary, and editorial feedback.
@@ -264,6 +264,15 @@ def regenerate_rejected_revision(story_id: int) -> StoryRevision:
     if story.status == "Archived":
         raise ValueError(
             "Archived stories must be restored before regenerating revisions."
+        )
+
+    # Ensure the administrator is regenerating the intended revision.
+    if (
+        expected_revision_num is None
+        or story.currentrevisionnum != expected_revision_num
+    ):
+        raise ValueError(
+            "The current revision has changed. Please review it again."
         )
 
     rejected_revision = StoryRevision.objects.get(
@@ -331,6 +340,26 @@ def regenerate_rejected_revision(story_id: int) -> StoryRevision:
         if story.currentrevisionnum != rejected_revision.revisionnum:
             raise ValueError(
                 "The current revision changed during regeneration."
+            )
+
+        # Retrieve the latest version of the rejected revision
+        # while holding the Story lock.
+        current_revision = StoryRevision.objects.get(
+            storyid_id=story_id,
+            revisionnum=story.currentrevisionnum,
+        )
+
+        # Ensure the revision is still eligible for regeneration.
+        if current_revision.status != "Rejected":
+            raise ValueError(
+                "The revision status changed during regeneration."
+            )
+
+        # Ensure Gemini used the latest editorial feedback.
+        if current_revision.reviewfeedback != rejected_revision.reviewfeedback:
+            raise ValueError(
+                "Review feedback changed during regeneration. "
+                "Please try again."
             )
 
         # Collect article IDs from the rejected revision before

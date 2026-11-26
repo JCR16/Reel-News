@@ -21,11 +21,15 @@ from .services.story_manager import (
     generate_and_save_story,
     generate_and_save_revision,
     regenerate_rejected_revision,
-    cleanup_unused_article_text,
 )
 from .services.story_deletion import (
     delete_story,
     can_delete_story,
+)
+from .services.story_publication import (
+    approve_revision,
+    reject_revision,
+    update_review_feedback,
 )
 
 from .forms import ArticleFormSet, RevisionRejectionForm, StoryAdminForm, TagAdminForm
@@ -249,6 +253,7 @@ class StoryAdmin(admin.ModelAdmin):
         "current_headline",
         "current_summary",
         "current_sources",
+        "current_review_feedback",
         "published_headline",
         "published_summary",
         "published_sources",
@@ -279,6 +284,7 @@ class StoryAdmin(admin.ModelAdmin):
             {
                 "fields": [
                     "editing_revision",
+                    "editing_revision_status",
                     "currentrevisionnum",
                     "current_headline",
                     "current_summary",
@@ -385,6 +391,10 @@ class StoryAdmin(admin.ModelAdmin):
         Collect source articles, generate a story using Gemini,
         and save the resulting story and revision to PostgreSQL.
         """
+
+        # Require permission to create new stories.
+        if not super().has_add_permission(request):
+            raise PermissionDenied
 
         if request.method == "POST":
             # Populate the formset with submitted article data.
@@ -650,6 +660,10 @@ class StoryAdmin(admin.ModelAdmin):
         if story is None:
             raise Http404("Story not found")
 
+        # Require permission to modify this story.
+        if not self.has_change_permission(request, story):
+            raise PermissionDenied
+
         if request.method == "POST":
             # Populate the forms with submitted article data.
             formset = ArticleFormSet(request.POST)
@@ -741,6 +755,10 @@ class StoryAdmin(admin.ModelAdmin):
         if story is None:
             raise Http404("Story not found")
 
+        # Require permission to view this story's revision history.
+        if not self.has_view_or_change_permission(request, story):
+            raise PermissionDenied
+
         # Retrieve all revisions, newest first.
         revisions = list(
             StoryRevision.objects.filter(
@@ -785,69 +803,53 @@ class StoryAdmin(admin.ModelAdmin):
             context,
         )
 
-    @admin.action(description="Approve selected story revisions")
+    @admin.action(
+        permissions=["change"],
+        description="Approve selected story revisions",
+    )
     def approve_revision(self, request, queryset):
         """
-        Approve the current revision of each selected story.
-
-        The approved revision becomes the publicly visible version.
-        Previously published revisions remain in revision history.
+        Approve the current Draft revision of each selected story
+        using the publication service.
         """
 
         approved = 0
+        skipped = 0
 
         for story in queryset:
-            with transaction.atomic():
-                # Lock the story to prevent concurrent approval updates.
-                locked_story = Story.objects.select_for_update().get(
-                    pk=story.pk
-                )
+            # Verify that the administrator can modify this story.
+            if not self.has_change_permission(request, story):
+                skipped += 1
+                continue
 
-                # Find the current revision.
-                revision = locked_story.revisions.filter(
-                    revisionnum=locked_story.currentrevisionnum
-                ).first()
-
-                # Archived stories must be restored before approving revisions.
-                if locked_story.status == "Archived":
-                    continue
-
-                # Only Draft revisions can be approved.
-                if revision is None or revision.status != "Draft":
-                    continue
-
-                # Mark this revision as approved.
-                revision.status = "Published"
-                revision.save(update_fields=["status"])
-
-                # Make this revision the public version of the story.
-                locked_story.publishedrevisionnum = revision.revisionnum
-                locked_story.status = "Published"
-
-                locked_story.save(
-                    update_fields=["publishedrevisionnum", "status"]
+            try:
+                # Approve the revision using the shared service.
+                approve_revision(
+                    story.pk,
+                    expected_revision_num=story.currentrevisionnum,
                 )
 
                 approved += 1
 
-                # Collect article IDs associated with the approved revision.
-                article_ids = list(
-                    RevisionArticle.objects.filter(
-                        storyid=locked_story,
-                        revisionnum=revision.revisionnum,
-                    ).values_list("articleid_id", flat=True)
-                )
+            except (ValueError, Story.DoesNotExist):
+                # Skip stories that are no longer eligible or available.
+                skipped += 1
 
-                # Clean up these articles after approval commits.
-                transaction.on_commit(
-                    lambda ids=article_ids: cleanup_unused_article_text(ids)
-                )
+        # Report successful approvals.
+        if approved:
+            self.message_user(
+                request,
+                f"{approved} story revision(s) approved and published.",
+                messages.SUCCESS,
+            )
 
-        self.message_user(
-            request,
-            f"{approved} story revision(s) approved and published.",
-            messages.SUCCESS,
-        )
+        # Report stories that could not be approved.
+        if skipped:
+            self.message_user(
+                request,
+                f"{skipped} story revision(s) could not be approved.",
+                messages.WARNING,
+            )
 
     @admin.action(
         permissions=["change"],
@@ -992,76 +994,60 @@ class StoryAdmin(admin.ModelAdmin):
 
     def approve_revision_view(self, request, story_id):
         """
-        Approve the current revision of a story from its Admin page.
-        Only POST requests can change the database.
+        Approve the current revision of a story through Django Admin.
         """
-        from django.http import Http404, HttpResponseNotAllowed
 
+        # Only POST requests can modify the database.
         if request.method != "POST":
             return HttpResponseNotAllowed(["POST"])
 
-        with transaction.atomic():
-            # Lock the story while processing approval.
-            story = Story.objects.select_for_update().filter(
-                pk=story_id
-            ).first()
+        # Retrieve the story and verify it exists.
+        story = self.get_object(request, str(story_id))
 
-            if story is None:
-                raise Http404("Story not found")
+        if story is None:
+            raise Http404("Story not found")
 
-            # Prevent approval of revisions belonging to archived stories.
-            if story.status == "Archived":
-                messages.error(
-                    request,
-                    "Archived stories must be restored before approving revisions."
-                )
+        # Require normal Django change permissions.
+        if not super().has_change_permission(request, story):
+            raise PermissionDenied
 
-                return redirect(
-                    reverse("admin:stories_story_change", args=[story_id])
-                )
+        try:
+            # Retrieve the revision number submitted by the browser.
+            expected_revision_num = int(
+                request.POST.get("expected_revision_num", "")
+            )
 
-            # Retrieve the current revision.
-            revision = story.revisions.filter(
-                revisionnum=story.currentrevisionnum
-            ).first()
+        except (ValueError, TypeError):
+            messages.error(
+                request,
+                "Invalid revision number. Please refresh the page."
+            )
 
-            # Only Draft revisions can be approved.
-            if revision is None or revision.status != "Draft":
-                messages.error(
-                    request,
-                    "Only Draft revisions can be approved."
-                )
-            else:
-                # Publish the approved revision.
-                revision.status = "Published"
-                revision.save(update_fields=["status"])
+            return redirect(
+                reverse("admin:stories_story_change", args=[story_id])
+            )
 
-                # Update the publicly visible revision.
-                story.publishedrevisionnum = revision.revisionnum
-                story.status = "Published"
+        try:
+            # Approve only the revision the administrator reviewed.
+            revision = approve_revision(
+                story_id,
+                expected_revision_num=expected_revision_num,
+            )
 
-                story.save(
-                    update_fields=["publishedrevisionnum", "status"]
-                )
+        except Story.DoesNotExist:
+            raise Http404("Story not found")
 
-                # Collect article IDs associated with the approved revision.
-                article_ids = list(
-                    RevisionArticle.objects.filter(
-                        storyid=story,
-                        revisionnum=revision.revisionnum,
-                    ).values_list("articleid_id", flat=True)
-                )
+        except ValueError as error:
+            # Display the reason approval was unsuccessful.
+            messages.error(request, str(error))
 
-                # Clean up these articles after approval commits.
-                transaction.on_commit(
-                    lambda ids=article_ids: cleanup_unused_article_text(ids)
-                )
-
-                messages.success(
-                    request,
-                    f"Revision {revision.revisionnum} approved "
-                    f"for Story {story_id}!"
-                )
+        else:
+            # Notify the administrator of successful approval.
+            messages.success(
+                request,
+                f"Revision {revision.revisionnum} approved "
+                f"for Story {story_id}!"
+            )
 
         # Return to the Story edit page.
         return redirect(
@@ -1073,25 +1059,35 @@ class StoryAdmin(admin.ModelAdmin):
 
     def reject_revision_view(self, request, story_id):
         """
-        Allow an administrator to reject the current revision
-        after providing mandatory feedback.
+        Display the revision rejection form and process
+        submitted review feedback.
         """
-        from django.http import Http404
-        from django.shortcuts import get_object_or_404
 
-        story = get_object_or_404(Story, pk=story_id)
+        # Only GET and POST requests are supported.
+        if request.method not in ("GET", "POST"):
+            return HttpResponseNotAllowed(["GET", "POST"])
 
-        # Prevent archived stories from entering the rejection workflow.
+        # Retrieve the story and verify it exists.
+        story = self.get_object(request, str(story_id))
+
+        if story is None:
+            raise Http404("Story not found")
+
+        # Require normal Django change permissions.
+        if not super().has_change_permission(request, story):
+            raise PermissionDenied
+
+        # Archived stories cannot have revisions rejected.
         if story.status == "Archived":
             messages.error(
                 request,
                 "Archived stories must be restored before rejecting revisions."
             )
-
             return redirect(
                 reverse("admin:stories_story_change", args=[story_id])
             )
 
+        # Retrieve the current revision for the rejection form.
         revision = story.revisions.filter(
             revisionnum=story.currentrevisionnum
         ).first()
@@ -1101,79 +1097,92 @@ class StoryAdmin(admin.ModelAdmin):
 
         # Only Draft revisions can be rejected.
         if revision.status != "Draft":
-            messages.error(
-                request,
-                "Only Draft revisions can be rejected."
-            )
+            messages.error(request, "Only Draft revisions can be rejected.")
             return redirect(
                 reverse("admin:stories_story_change", args=[story_id])
             )
 
+        # Prevent administrators from opening a rejection form
+        # for a revision they have not reviewed.
+        if request.method == "GET":
+            try:
+                expected_revision_num = int(
+                    request.GET.get("expected_revision_num", "")
+                )
+            except (ValueError, TypeError):
+                expected_revision_num = None
+
+            if expected_revision_num != revision.revisionnum:
+                messages.error(
+                    request,
+                    "The current revision has changed. "
+                    "Please review it again."
+                )
+                return redirect(
+                    "admin:stories_story_change",
+                    story_id,
+                )
+
         if request.method == "POST":
             form = RevisionRejectionForm(request.POST)
 
-            if form.is_valid():
-                with transaction.atomic():
-                    # Lock the story to prevent concurrent updates.
-                    story = Story.objects.select_for_update().get(
-                        pk=story_id
-                    )
+            # Prevent an outdated form from displaying a newer revision
+            # alongside feedback intended for an older revision.
+            try:
+                submitted_revision = int(
+                    request.POST.get("expected_revision_num", "")
+                )
+            except (ValueError, TypeError):
+                submitted_revision = None
 
-                    # Recheck the status in case the story was archived
-                    # while the administrator was completing the rejection form.
-                    if story.status == "Archived":
-                        messages.error(
-                            request,
-                            "This story has been archived and cannot be rejected."
-                        )
-
-                        return redirect(
-                            reverse("admin:stories_story_change", args=[story_id])
-                        )
-
-                    # Recheck the revision after acquiring the lock.
-                    revision = story.revisions.get(
-                        revisionnum=story.currentrevisionnum
-                    )
-
-                    if revision.status != "Draft":
-                        messages.error(
-                            request,
-                            "This revision is no longer a Draft."
-                        )
-                        return redirect(
-                            reverse(
-                                "admin:stories_story_change",
-                                args=[story_id]
-                            )
-                        )
-
-                    # Save the rejection and its feedback.
-                    revision.status = "Rejected"
-                    revision.reviewfeedback = form.cleaned_data["feedback"]
-
-                    revision.save(
-                        update_fields=["status", "reviewfeedback"]
-                    )
-
-                    # Keep previously published stories visible.
-                    if story.publishedrevisionnum is None:
-                        story.status = "Changes Needed"
-                        story.save(update_fields=["status"])
-
-                messages.success(
+            if submitted_revision != revision.revisionnum:
+                messages.error(
                     request,
-                    f"Revision {revision.revisionnum} rejected. "
-                    "Feedback saved successfully."
+                    "The revision has changed or the revision number "
+                    "is invalid. Please review the current revision again."
                 )
 
                 return redirect(
                     reverse("admin:stories_story_change", args=[story_id])
                 )
 
-        else:
-            form = RevisionRejectionForm()
+            if form.is_valid():
+                try:
+                    # Delegate rejection to the publication service.
+                    revision = reject_revision(
+                        story_id,
+                        feedback=form.cleaned_data["feedback"],
+                        expected_revision_num=form.cleaned_data[
+                            "expected_revision_num"
+                        ],
+                    )
 
+                except Story.DoesNotExist:
+                    raise Http404("Story not found")
+
+                except ValueError as error:
+                    messages.error(request, str(error))
+
+                else:
+                    messages.success(
+                        request,
+                        f"Revision {revision.revisionnum} rejected. "
+                        "Feedback saved successfully."
+                    )
+
+                return redirect(
+                    reverse("admin:stories_story_change", args=[story_id])
+                )
+
+        else:
+            # Record the revision being reviewed when opening the form.
+            form = RevisionRejectionForm(
+                initial={
+                    "expected_revision_num": revision.revisionnum,
+                }
+            )
+
+        # Provide the rejection template with its required context.
         context = {
             **self.admin_site.each_context(request),
             "title": f"Reject Revision for Story {story_id}",
@@ -1233,10 +1242,36 @@ class StoryAdmin(admin.ModelAdmin):
         if request.method != "POST":
             return HttpResponseNotAllowed(["POST"])
 
+        # Retrieve the story and verify it exists.
+        story = self.get_object(request, str(story_id))
+
+        if story is None:
+            raise Http404("Story not found")
+
+        # Require permission to modify this story.
+        if not self.has_change_permission(request, story):
+            raise PermissionDenied
+
+        # Retrieve and validate the expected revision number
+        # submitted by the regeneration form.
+        try:
+            expected_revision_num = int(
+                request.POST.get("expected_revision_num", "")
+            )
+        except (ValueError, TypeError):
+            messages.error(
+                request,
+                "Invalid revision number. Please refresh the page."
+            )
+            return redirect("admin:stories_story_change", story_id)
+
         try:
             # Generate a new revision using the rejected revision's
             # original articles, headline, summary, and feedback.
-            revision = regenerate_rejected_revision(story_id)
+            revision = regenerate_rejected_revision(
+                story_id,
+                expected_revision_num=expected_revision_num,
+            )
 
         except Story.DoesNotExist:
             messages.error(request, "Story not found.")
@@ -1370,31 +1405,21 @@ class StoryAdmin(admin.ModelAdmin):
 
     def save_model(self, request, obj, form, change):
         """
-        Save the Story and update the current rejected revision's
-        review feedback when it has been edited.
+        Save the story and delegate review feedback updates
+        to the publication service.
         """
 
-        # Save the Story normally.
+        # Perform Django's normal model-saving behavior.
         super().save_model(request, obj, form, change)
 
-        # Only update feedback when the field was changed.
-        if "review_feedback" not in form.changed_data:
-            return
-
-        # Retrieve the current revision.
-        revision = StoryRevision.objects.filter(
-            storyid=obj,
-            revisionnum=obj.currentrevisionnum,
-            status="Rejected",
-        ).first()
-
-        # Only rejected revisions can have their feedback updated.
-        if revision is None:
-            return
-
-        # Save the edited feedback to the StoryRevision table.
-        revision.reviewfeedback = form.cleaned_data["review_feedback"]
-        revision.save(update_fields=["reviewfeedback"])
+        # Only update feedback when editing an existing story
+        # and the feedback field has changed.
+        if change and "review_feedback" in form.changed_data:
+            update_review_feedback(
+                obj.pk,
+                feedback=form.cleaned_data["review_feedback"],
+                expected_revision_num=form.cleaned_data["editing_revision"],
+            )
 
     def published_headline(self, obj):
         """
@@ -1519,6 +1544,39 @@ class StoryAdmin(admin.ModelAdmin):
                     if field != "review_feedback"
                 ]
 
+            if name == "Current Revision":
+                fields = list(options["fields"])
+
+                # Determine whether the administrator can edit this story.
+                can_edit = self.has_change_permission(request, obj)
+
+                # Only display feedback for rejected revisions.
+                if not show_feedback:
+                    fields.remove("review_feedback")
+
+                # Use the read-only display method when editing is prohibited.
+                elif not can_edit:
+                    fields = [
+                        "current_review_feedback"
+                        if field == "review_feedback"
+                        else field
+                        for field in fields
+                    ]
+
+                # Read-only pages do not need stale-form tracking fields.
+                if not can_edit:
+                    fields = [
+                        field
+                        for field in fields
+                        if field not in (
+                            "editing_revision",
+                            "editing_revision_status",
+                        )
+                    ]
+
+                options["fields"] = fields
+
+            # Include the current revision's status in the heading.
             if name == "Current Revision" and current_status:
                 name = f"Current Revision ({current_status})"
 
