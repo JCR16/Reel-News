@@ -14,6 +14,7 @@
 
 from django.test import SimpleTestCase, RequestFactory
 from unittest.mock import patch, MagicMock
+from django.contrib.auth.models import AnonymousUser
 
 from stories.views import feed
 
@@ -35,6 +36,10 @@ class FeedViewTests(SimpleTestCase):
 
         # Create a fake GET request
         request = self.factory.get("/")
+
+        # Simulate an unauthenticated visitor because RequestFactory
+        # does not execute Django's authentication middleware.
+        request.user = AnonymousUser()
 
         # Call the feed view
         response = feed(request)
@@ -78,6 +83,10 @@ class FeedViewTests(SimpleTestCase):
         # Create a fake GET request
         request = self.factory.get("/")
 
+        # Simulate an unauthenticated visitor because RequestFactory
+        # does not execute Django's authentication middleware.
+        request.user = AnonymousUser()
+
         # Call the feed view
         response = feed(request)
 
@@ -92,13 +101,17 @@ class FeedViewTests(SimpleTestCase):
             request,
             "stories/feed.html",
             {
-                "stories": [{
-                    "id": 1,
-                    "headline": "Test Headline",
-                    "summary": "This is a test summary.",
-                    "status": "Published",
-                    "image": "https://example.com/image.jpg"
-                }]
+                "stories": [
+                    {
+                        "id": 1,
+                        "headline": "Test Headline",
+                        "summary": "This is a test summary.",
+                        "status": "Published",
+                        "image": "https://example.com/image.jpg",
+                        "bookmarked": False,
+                        "can_bookmark": False,
+                    }
+                ]
             }
         )
 
