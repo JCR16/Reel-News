@@ -14,6 +14,8 @@
     <!-- Reel News CSS -->
     <link rel="stylesheet" href="{% static 'stories/css/global.css' %}">
     <link rel="stylesheet" href="{% static 'stories/css/feed.css' %}">
+    <!-- Bookmark interaction JavaScript -->
+    <script src="{% static 'stories/js/bookmarks.js' %}" defer></script>
 </head>
 
 <body>
@@ -49,10 +51,40 @@
                 </div>
 
                 <div class="article-action">
-                    <a href="{% url 'story_detail' story.id %}" class="sources-link">                        <button type="button" style="cursor: pointer; height: 33px; background: none; border: none;">
+                    <a href="{% url 'story_detail' story.id %}" class="sources-link">
+                        <button type="button" style="cursor: pointer; height: 33px; background: none; border: none;">
                             <span class="category">Read More</span>
                         </button>
                     </a>
+
+                    <!-- Only display the bookmark button for eligible stories -->
+                    {% if story.can_bookmark %}
+                        <button
+                            type="button"
+                            class="bookmark-button"
+                            data-story-id="{{ story.id }}"
+                            data-add-url="{% url 'add_bookmark' story.id %}"
+                            data-remove-url="{% url 'remove_bookmark' story.id %}"
+                            aria-pressed="{{ story.bookmarked|yesno:'true,false' }}"
+                            aria-label="Bookmark story"
+                            title="Toggle bookmark"
+                        >
+                            <!-- Bookmark icon -->
+                            <svg
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-hidden="true"
+                            >
+                                <path d="M6 3H18V21L12 17L6 21Z"/>
+                            </svg>
+                        </button>
+                    {% endif %}
                 </div>
             </section>
 
