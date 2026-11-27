@@ -52,6 +52,7 @@ app/
 ├── stories/
 │   └── tests/
 │       ├── test_article_cleanup.py
+│       ├── test_story_admin.py
 │       ├── test_story_archiving.py
 │       ├── test_story_deletion.py
 │       ├── test_story_manager.py
@@ -67,6 +68,7 @@ app/
 | `test_bookmark_views.py` | Bookmark endpoints, authentication, HTTP methods, and URL routing |
 | `test_article_cleanup.py` | Identification and removal of unused article text |
 | `test_story_archiving.py` | Story archiving and restoration |
+| `test_story_admin.py` | Admin fieldsets, revision headings, feedback visibility, and editing restrictions |
 | `test_story_deletion.py` | Deletion eligibility, related records, and orphaned articles |
 | `test_story_manager.py` | Story creation, revision generation, article linking, and regeneration |
 | `test_story_publication.py` | Revision approval, rejection, and review feedback |
