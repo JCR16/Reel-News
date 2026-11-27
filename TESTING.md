@@ -8,7 +8,7 @@ The unit tests use mocked database queries and external services, allowing them 
 
 ## Running Tests
 
-Activate the virtual environment and run the following commands from the `backend` directory.
+Activate the virtual environment and run the following commands from the `app` directory.
 
 Run all tests:
 
@@ -44,7 +44,7 @@ python manage.py test stories.tests.test_story_manager.StoryCreationTests.test_c
 ## Test Organization
 
 ```text
-backend/
+app/
 ├── accounts/
 │   └── tests/
 │       ├── test_bookmark_manager.py

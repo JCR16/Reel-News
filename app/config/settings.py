@@ -42,7 +42,7 @@ from dotenv import load_dotenv # Ability to read from .env files
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Load variables from backend/.env so python can access them using os.getenv()
+# Load variables from app/.env so python can access them using os.getenv()
 load_dotenv(BASE_DIR / ".env")
 
 # Quick-start development settings - unsuitable for production

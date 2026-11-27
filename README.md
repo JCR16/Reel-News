@@ -32,7 +32,7 @@ Reel News is being developed as a senior capstone project by undergraduate Compu
 From the repository root, create a virtual environment and install the project dependencies.
 
 ```bash
-cd backend
+cd app
 python -m venv .venv
 ```
 
@@ -44,13 +44,13 @@ pip install -r requirements.txt
 
 ### Configuration
 
-Copy `backend/.env.example` to `backend/.env` and configure the PostgreSQL connection, Django secret key, and Gemini API key.
+Copy `app/.env.example` to `app/.env` and configure the PostgreSQL connection, Django secret key, and Gemini API key.
 
 The application requires access to a configured Reel News PostgreSQL database.
 
 ### Running the Application
 
-From the `backend` directory:
+From the `app` directory:
 
 ```bash
 python manage.py runserver

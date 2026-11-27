@@ -18,7 +18,7 @@ __pycache__/
 db.sqlite3
 
 # prevent generated static files from being committed
-backend/staticfiles/
+app/staticfiles/
 
 # macOS system files
 .DS_Store
