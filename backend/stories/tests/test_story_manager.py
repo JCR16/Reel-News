@@ -1299,3 +1299,676 @@ class RevisionGenerationTests(SimpleTestCase):
                 call.atomic().__exit__(None, None, None),
             ],
         )
+
+
+class RejectedRevisionRegenerationTests(SimpleTestCase):
+    """Rejected Revision Regeneration"""
+
+    def start_patch(self, target):
+        # Start a patch and automatically remove it after the test.
+        patcher = patch(f"stories.services.story_manager.{target}")
+        mock = patcher.start()
+        self.addCleanup(patcher.stop)
+        return mock
+
+    def setUp(self):
+        # Create the initial story snapshot.
+        self.story = MagicMock(spec=Story)
+        self.story.pk = 1
+        self.story.status = "Changes Needed"
+        self.story.currentrevisionnum = 1
+        self.story.publishedrevisionnum = None
+
+        # Create the story snapshot retrieved after locking.
+        self.locked_story = MagicMock(spec=Story)
+        self.locked_story.pk = 1
+        self.locked_story.status = "Changes Needed"
+        self.locked_story.currentrevisionnum = 1
+        self.locked_story.publishedrevisionnum = None
+
+        # Create the original rejected revision.
+        self.rejected_revision = MagicMock(spec=StoryRevision)
+        self.rejected_revision.revisionnum = 1
+        self.rejected_revision.status = "Rejected"
+        self.rejected_revision.headline = "Original headline"
+        self.rejected_revision.summary = "Original summary."
+        self.rejected_revision.reviewfeedback = (
+            "Use more neutral language."
+        )
+
+        # Create a separate revision snapshot retrieved after locking.
+        self.current_revision = MagicMock(spec=StoryRevision)
+        self.current_revision.revisionnum = 1
+        self.current_revision.status = "Rejected"
+        self.current_revision.reviewfeedback = (
+            "Use more neutral language."
+        )
+
+        # Create the newly generated Draft revision.
+        self.new_revision = MagicMock(spec=StoryRevision)
+        self.new_revision.revisionnum = 2
+        self.new_revision.status = "Draft"
+
+        # Simulate the original source articles.
+        self.articles = [
+            {
+                "title": "First Article",
+                "link": "https://example.com/first",
+                "text": "First article content.",
+                "publisher_id": 1,
+            },
+            {
+                "title": "Second Article",
+                "link": "https://example.com/second",
+                "text": "Second article content.",
+                "publisher_id": 2,
+            },
+        ]
+
+        self.article_records = []
+        self.article_links = []
+        self.stored_texts = []
+
+        # Create database record mocks from the source article data.
+        for article_id, data in zip([10, 20], self.articles):
+            article = MagicMock(spec=Article)
+            article.pk = article_id
+            article.title = data["title"]
+            article.link = data["link"]
+            article.publisherid_id = data["publisher_id"]
+
+            stored_text = MagicMock(spec=ArticleText)
+            stored_text.text = data["text"]
+
+            article_link = MagicMock(spec=RevisionArticle)
+            article_link.articleid = article
+
+            self.article_records.append(article)
+            self.article_links.append(article_link)
+            self.stored_texts.append(stored_text)
+
+        # Simulate Gemini's improved response.
+        self.generated = {
+            "headline": "Improved headline",
+            "summary": "Improved neutral summary.",
+        }
+
+        # Mock database models.
+        self.mock_story = self.start_patch("Story")
+        self.mock_revision = self.start_patch("StoryRevision")
+        self.mock_revision_article = self.start_patch("RevisionArticle")
+        self.mock_article_text = self.start_patch("ArticleText")
+
+        # Mock generation and database-writing services.
+        self.mock_generate = self.start_patch("generate_story")
+        self.mock_create_revision = self.start_patch(
+            "create_story_revision"
+        )
+        self.mock_link_article = self.start_patch(
+            "link_revision_article"
+        )
+        self.mock_cleanup = self.start_patch(
+            "cleanup_unused_article_text"
+        )
+
+        # Mock transaction operations.
+        self.mock_atomic = self.start_patch("transaction.atomic")
+        self.mock_on_commit = self.start_patch("transaction.on_commit")
+
+        # Configure the initial and locked story lookups.
+        self.mock_story.objects.get.return_value = self.story
+
+        self.mock_story.objects.select_for_update.return_value.get.return_value = (
+            self.locked_story
+        )
+
+        # Return different revision snapshots for the two lookups.
+        self.mock_revision.objects.get.side_effect = [
+            self.rejected_revision,
+            self.current_revision,
+        ]
+
+        # Configure retrieval of the original article relationships.
+        self.mock_revision_article.objects.filter.return_value.select_related.return_value.order_by.return_value = (
+            self.article_links
+        )
+
+        # Configure retrieval of article IDs for deferred cleanup.
+        self.mock_revision_article.objects.filter.return_value.values_list.return_value = [
+            10, 20
+        ]
+
+        # Return the stored text for each original article.
+        self.mock_article_text.objects.get.side_effect = (
+            self.stored_texts
+        )
+
+        self.mock_generate.return_value = self.generated
+        self.mock_create_revision.return_value = self.new_revision
+
+    def assert_no_regeneration_writes(self):
+        # Shared assertions for unsuccessful regeneration attempts.
+        self.mock_create_revision.assert_not_called()
+        self.mock_link_article.assert_not_called()
+        self.mock_on_commit.assert_not_called()
+        self.mock_cleanup.assert_not_called()
+
+        self.story.save.assert_not_called()
+        self.locked_story.save.assert_not_called()
+        self.rejected_revision.save.assert_not_called()
+        self.current_revision.save.assert_not_called()
+
+    def assert_no_generation(self):
+        # Verify that regeneration stopped before calling Gemini.
+        self.mock_generate.assert_not_called()
+        self.mock_atomic.assert_not_called()
+        self.mock_story.objects.select_for_update.assert_not_called()
+
+        self.assert_no_regeneration_writes()
+
+    def test_regenerate_unpublished_story(self):
+        """Regenerate a rejected unpublished story"""
+
+        result = regenerate_rejected_revision(1, 1)
+
+        # Verify that the story was initially retrieved.
+        self.mock_story.objects.get.assert_called_once_with(
+            storyid=1
+        )
+
+        # Verify that the rejected revision was retrieved twice:
+        # initially and again after locking the story.
+        self.assertEqual(
+            self.mock_revision.objects.get.call_args_list,
+            [
+                call(storyid_id=1, revisionnum=1),
+                call(storyid_id=1, revisionnum=1),
+            ],
+        )
+
+        # Verify that the original article relationships were retrieved.
+        self.assertEqual(
+            self.mock_revision_article.objects.filter.call_args_list,
+            [
+                call(storyid=self.story, revisionnum=1),
+                call(storyid=self.locked_story, revisionnum=1),
+            ],
+        )
+
+        self.mock_revision_article.objects.filter.return_value.select_related.assert_called_once_with(
+            "articleid",
+            "articleid__publisherid",
+        )
+
+        self.mock_revision_article.objects.filter.return_value.select_related.return_value.order_by.assert_called_once_with(
+            "articleid_id"
+        )
+
+        # Verify that the original stored article text was retrieved.
+        self.assertEqual(
+            self.mock_article_text.objects.get.call_args_list,
+            [
+                call(articleid=self.article_records[0]),
+                call(articleid=self.article_records[1]),
+            ],
+        )
+
+        # Verify that Gemini received the original source text,
+        # rejected content, and editorial feedback.
+        self.mock_generate.assert_called_once_with(
+            [
+                "First article content.",
+                "Second article content.",
+            ],
+            previous_headline="Original headline",
+            previous_summary="Original summary.",
+            review_feedback="Use more neutral language.",
+        )
+
+        # Verify that the story was locked before saving.
+        self.mock_atomic.assert_called_once_with()
+        self.mock_story.objects.select_for_update.assert_called_once_with()
+
+        self.mock_story.objects.select_for_update.return_value.get.assert_called_once_with(
+            storyid=1
+        )
+
+        # Verify that Gemini's improved content was saved.
+        self.mock_create_revision.assert_called_once_with(
+            self.locked_story,
+            headline="Improved headline",
+            summary="Improved neutral summary.",
+        )
+
+        # Verify that the original articles were linked to the new revision.
+        self.assertEqual(
+            self.mock_link_article.call_args_list,
+            [
+                call(
+                    self.locked_story,
+                    self.new_revision,
+                    self.articles[0],
+                ),
+                call(
+                    self.locked_story,
+                    self.new_revision,
+                    self.articles[1],
+                ),
+            ],
+        )
+
+        # Unpublished stories return to Draft after regeneration.
+        self.assertEqual(self.locked_story.status, "Draft")
+        self.assertIsNone(self.locked_story.publishedrevisionnum)
+
+        self.locked_story.save.assert_called_once_with(
+            update_fields=["status"]
+        )
+
+        # Verify that the rejected revision was preserved.
+        self.assertEqual(self.rejected_revision.status, "Rejected")
+        self.assertEqual(
+            self.rejected_revision.reviewfeedback,
+            "Use more neutral language.",
+        )
+
+        self.rejected_revision.save.assert_not_called()
+        self.current_revision.save.assert_not_called()
+
+        # Cleanup should be scheduled but not executed immediately.
+        self.mock_on_commit.assert_called_once()
+        self.mock_cleanup.assert_not_called()
+
+        self.assertIs(result, self.new_revision)
+
+    def test_regenerate_published_story(self):
+        """Preserve publication when regenerating a rejected revision"""
+
+        # Simulate a published story with a newer rejected revision.
+        self.story.status = "Published"
+        self.story.publishedrevisionnum = 1
+        self.story.currentrevisionnum = 2
+
+        self.locked_story.status = "Published"
+        self.locked_story.publishedrevisionnum = 1
+        self.locked_story.currentrevisionnum = 2
+
+        self.rejected_revision.revisionnum = 2
+        self.current_revision.revisionnum = 2
+        self.new_revision.revisionnum = 3
+
+        result = regenerate_rejected_revision(1, 2)
+
+        # Verify that the existing publication remains unchanged.
+        self.assertEqual(self.locked_story.status, "Published")
+        self.assertEqual(self.locked_story.publishedrevisionnum, 1)
+
+        # No story status update is required.
+        self.locked_story.save.assert_not_called()
+
+        self.mock_create_revision.assert_called_once_with(
+            self.locked_story,
+            headline="Improved headline",
+            summary="Improved neutral summary.",
+        )
+
+        # Verify that the rejected revision remains unchanged.
+        self.assertEqual(self.rejected_revision.status, "Rejected")
+        self.rejected_revision.save.assert_not_called()
+        self.current_revision.save.assert_not_called()
+
+        self.assertEqual(self.mock_link_article.call_count, 2)
+        self.mock_on_commit.assert_called_once()
+
+        self.assertIs(result, self.new_revision)
+
+    def test_regenerate_nonexistent_story(self):
+        """Handle regeneration of a nonexistent story"""
+
+        self.mock_story.objects.get.side_effect = Story.DoesNotExist
+
+        with self.assertRaises(Story.DoesNotExist):
+            regenerate_rejected_revision(999, 1)
+
+        self.mock_story.objects.get.assert_called_once_with(
+            storyid=999
+        )
+
+        self.mock_revision.objects.get.assert_not_called()
+
+        self.assert_no_generation()
+
+    def test_regenerate_archived_story(self):
+        """Prevent regeneration of an archived story"""
+
+        self.story.status = "Archived"
+        self.story.publishedrevisionnum = 1
+
+        with self.assertRaisesMessage(
+            ValueError,
+            "Archived stories must be restored before regenerating revisions.",
+        ):
+            regenerate_rejected_revision(1, 1)
+
+        self.mock_revision.objects.get.assert_not_called()
+
+        self.assert_no_generation()
+
+    def test_regenerate_invalid_expected_revision(self):
+        """Prevent regeneration with an invalid expected revision"""
+
+        # Test both stale and missing revision numbers.
+        for expected_revision in [0, 2, None]:
+            with self.subTest(expected_revision=expected_revision):
+
+                with self.assertRaisesMessage(
+                    ValueError,
+                    "The current revision has changed. Please review it again.",
+                ):
+                    regenerate_rejected_revision(
+                        1,
+                        expected_revision,
+                    )
+
+                # Validation must occur before retrieving the revision.
+                self.mock_revision.objects.get.assert_not_called()
+
+                self.assert_no_generation()
+
+    def test_regenerate_missing_revision(self):
+        """Prevent regeneration when the current revision is missing"""
+
+        self.mock_revision.objects.get.side_effect = (
+            StoryRevision.DoesNotExist
+        )
+
+        with self.assertRaises(StoryRevision.DoesNotExist):
+            regenerate_rejected_revision(1, 1)
+
+        self.mock_revision_article.objects.filter.assert_not_called()
+
+        self.assert_no_generation()
+
+    def test_regenerate_non_rejected_revision(self):
+        """Prevent regeneration of non-Rejected revisions"""
+
+        for status in ["Draft", "Published"]:
+            with self.subTest(status=status):
+
+                self.rejected_revision.status = status
+
+                # Reset the lookup response for each scenario.
+                self.mock_revision.objects.get.side_effect = None
+                self.mock_revision.objects.get.return_value = (
+                    self.rejected_revision
+                )
+
+                with self.assertRaisesMessage(
+                    ValueError,
+                    "Only rejected revisions can be regenerated.",
+                ):
+                    regenerate_rejected_revision(1, 1)
+
+                self.mock_revision_article.objects.filter.assert_not_called()
+
+                self.assert_no_generation()
+
+    def test_regenerate_missing_feedback(self):
+        """Prevent regeneration without review feedback"""
+
+        for feedback in [None, ""]:
+            with self.subTest(feedback=feedback):
+
+                self.rejected_revision.reviewfeedback = feedback
+
+                self.mock_revision.objects.get.side_effect = None
+                self.mock_revision.objects.get.return_value = (
+                    self.rejected_revision
+                )
+
+                with self.assertRaisesMessage(
+                    ValueError,
+                    "The rejected revision has no review feedback.",
+                ):
+                    regenerate_rejected_revision(1, 1)
+
+                self.mock_revision_article.objects.filter.assert_not_called()
+
+                self.assert_no_generation()
+
+    def test_regenerate_missing_source_articles(self):
+        """Prevent regeneration without source articles"""
+
+        # Simulate a rejected revision with no article relationships.
+        self.mock_revision_article.objects.filter.return_value.select_related.return_value.order_by.return_value = []
+
+        with self.assertRaisesMessage(
+            ValueError,
+            "No source articles found for regeneration.",
+        ):
+            regenerate_rejected_revision(1, 1)
+
+        self.mock_article_text.objects.get.assert_not_called()
+
+        self.assert_no_generation()
+
+    def test_regenerate_missing_article_text(self):
+        """Prevent regeneration when stored article text is missing"""
+
+        # Simulate the first article's stored text being unavailable.
+        self.mock_article_text.objects.get.side_effect = (
+            ArticleText.DoesNotExist
+        )
+
+        with self.assertRaises(ArticleText.DoesNotExist):
+            regenerate_rejected_revision(1, 1)
+
+        self.mock_article_text.objects.get.assert_called_once_with(
+            articleid=self.article_records[0]
+        )
+
+        self.assert_no_generation()
+
+    def test_regeneration_gemini_failure(self):
+        """Prevent regeneration writes when Gemini fails"""
+
+        self.mock_generate.side_effect = RuntimeError(
+            "Gemini generation failed."
+        )
+
+        with self.assertRaisesMessage(
+            RuntimeError,
+            "Gemini generation failed.",
+        ):
+            regenerate_rejected_revision(1, 1)
+
+        self.mock_generate.assert_called_once()
+        self.mock_atomic.assert_not_called()
+        self.mock_story.objects.select_for_update.assert_not_called()
+
+        self.assert_no_regeneration_writes()
+
+    def test_story_archived_during_regeneration(self):
+        """Prevent regeneration when the story becomes archived"""
+
+        self.story.status = "Published"
+        self.story.publishedrevisionnum = 1
+
+        self.locked_story.status = "Archived"
+        self.locked_story.publishedrevisionnum = 1
+
+        with self.assertRaisesMessage(
+            ValueError,
+            "The story was archived during revision regeneration.",
+        ):
+            regenerate_rejected_revision(1, 1)
+
+        self.mock_generate.assert_called_once()
+        self.mock_atomic.assert_called_once_with()
+        self.mock_story.objects.select_for_update.assert_called_once_with()
+
+        # The second revision lookup should not occur.
+        self.mock_revision.objects.get.assert_called_once()
+
+        self.assert_no_regeneration_writes()
+
+    def test_current_revision_changed_during_regeneration(self):
+        """Prevent regeneration when the current revision changes"""
+
+        # Simulate another administrator creating a newer revision.
+        self.locked_story.currentrevisionnum = 2
+
+        with self.assertRaisesMessage(
+            ValueError,
+            "The current revision changed during regeneration.",
+        ):
+            regenerate_rejected_revision(1, 1)
+
+        self.mock_generate.assert_called_once()
+        self.mock_story.objects.select_for_update.assert_called_once_with()
+
+        self.assertEqual(self.locked_story.currentrevisionnum, 2)
+        self.mock_revision.objects.get.assert_called_once()
+
+        self.assert_no_regeneration_writes()
+
+    def test_revision_status_changed_during_regeneration(self):
+        """Prevent regeneration when the revision status changes"""
+
+        # Simulate the revision becoming ineligible during generation.
+        self.current_revision.status = "Published"
+
+        with self.assertRaisesMessage(
+            ValueError,
+            "The revision status changed during regeneration.",
+        ):
+            regenerate_rejected_revision(1, 1)
+
+        self.mock_generate.assert_called_once()
+        self.mock_story.objects.select_for_update.assert_called_once_with()
+
+        # Verify that the latest revision state was retrieved.
+        self.assertEqual(
+            self.mock_revision.objects.get.call_count,
+            2,
+        )
+
+        self.assert_no_regeneration_writes()
+
+    def test_feedback_changed_during_regeneration(self):
+        """Prevent regeneration using outdated review feedback"""
+
+        # Simulate another administrator updating the feedback
+        # while Gemini is generating the replacement content.
+        self.current_revision.reviewfeedback = (
+            "Include more diverse sources."
+        )
+
+        with self.assertRaisesMessage(
+            ValueError,
+            "Review feedback changed during regeneration. Please try again.",
+        ):
+            regenerate_rejected_revision(1, 1)
+
+        # Verify that Gemini originally received the old feedback.
+        self.mock_generate.assert_called_once_with(
+            [
+                "First article content.",
+                "Second article content.",
+            ],
+            previous_headline="Original headline",
+            previous_summary="Original summary.",
+            review_feedback="Use more neutral language.",
+        )
+
+        # Verify that the updated feedback was not overwritten.
+        self.assertEqual(
+            self.current_revision.reviewfeedback,
+            "Include more diverse sources.",
+        )
+
+        self.assertEqual(
+            self.mock_revision.objects.get.call_count,
+            2,
+        )
+
+        self.assert_no_regeneration_writes()
+
+    def test_regenerated_revision_creation_failure(self):
+        """Stop regeneration when revision creation fails"""
+
+        self.mock_create_revision.side_effect = RuntimeError(
+            "Revision creation failed."
+        )
+
+        with self.assertRaisesMessage(
+            RuntimeError,
+            "Revision creation failed.",
+        ):
+            regenerate_rejected_revision(1, 1)
+
+        self.mock_create_revision.assert_called_once()
+
+        # No article links, status changes, or cleanup should occur.
+        self.mock_link_article.assert_not_called()
+        self.locked_story.save.assert_not_called()
+        self.mock_on_commit.assert_not_called()
+        self.mock_cleanup.assert_not_called()
+
+        self.assertEqual(
+            self.locked_story.status,
+            "Changes Needed",
+        )
+
+    def test_regenerated_revision_article_linking_failure(self):
+        """Stop regeneration when article linking fails"""
+
+        self.mock_link_article.side_effect = RuntimeError(
+            "Article linking failed."
+        )
+
+        with self.assertRaisesMessage(
+            RuntimeError,
+            "Article linking failed.",
+        ):
+            regenerate_rejected_revision(1, 1)
+
+        self.mock_create_revision.assert_called_once()
+
+        # Linking should stop after the first failure.
+        self.mock_link_article.assert_called_once_with(
+            self.locked_story,
+            self.new_revision,
+            self.articles[0],
+        )
+
+        # The story must not return to Draft after failed linking.
+        self.assertEqual(
+            self.locked_story.status,
+            "Changes Needed",
+        )
+
+        self.locked_story.save.assert_not_called()
+        self.mock_on_commit.assert_not_called()
+        self.mock_cleanup.assert_not_called()
+
+    def test_regeneration_cleanup_callback(self):
+        """Schedule cleanup using the rejected revision's article IDs"""
+
+        regenerate_rejected_revision(1, 1)
+
+        # Verify that the correct article IDs were retrieved.
+        self.mock_revision_article.objects.filter.return_value.values_list.assert_called_once_with(
+            "articleid_id",
+            flat=True,
+        )
+
+        self.mock_on_commit.assert_called_once()
+        self.mock_cleanup.assert_not_called()
+
+        # Retrieve and manually execute the deferred callback.
+        callback = self.mock_on_commit.call_args.args[0]
+        callback()
+
+        # Only articles from the rejected revision should be checked.
+        self.mock_cleanup.assert_called_once_with([10, 20])
