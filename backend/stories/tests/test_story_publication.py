@@ -817,3 +817,374 @@ class StoryRejectionTests(SimpleTestCase):
         self.story.revisions.filter.assert_not_called()
         self.story.save.assert_not_called()
         self.revision.save.assert_not_called()
+
+
+class ReviewFeedbackTests(SimpleTestCase):
+    """Review Feedback Updates"""
+
+    def setUp(self):
+        # Create a mock story requiring editorial changes.
+        self.story = MagicMock(spec=Story)
+        self.story.pk = 1
+        self.story.status = "Changes Needed"
+        self.story.currentrevisionnum = 1
+        self.story.publishedrevisionnum = None
+
+        # Create the mock rejected revision.
+        self.revision = MagicMock(spec=StoryRevision)
+        self.revision.revisionnum = 1
+        self.revision.status = "Rejected"
+        self.revision.reviewfeedback = "Original feedback."
+
+        # Return the current revision when requested.
+        self.story.revisions.filter.return_value.first.return_value = (
+            self.revision
+        )
+
+    @patch("stories.services.story_publication.Story")
+    def test_update_unpublished_story_feedback(self, mock_story):
+        """Update feedback on an unpublished story"""
+
+        # Simulate retrieving and locking the story.
+        mock_story.objects.select_for_update.return_value.get.return_value = (
+            self.story
+        )
+
+        # Update the rejected revision's feedback.
+        result = update_review_feedback.__wrapped__(
+            story_id=1,
+            feedback="Updated editorial feedback.",
+            expected_revision_num=1,
+        )
+
+        # Verify that the correct story was retrieved with a lock.
+        mock_story.objects.select_for_update.assert_called_once_with()
+        mock_story.objects.select_for_update.return_value.get.assert_called_once_with(
+            pk=1
+        )
+
+        # Verify that the correct revision was retrieved.
+        self.story.revisions.filter.assert_called_once_with(
+            revisionnum=1
+        )
+
+        # Verify that only the review feedback was updated.
+        self.assertEqual(
+            self.revision.reviewfeedback,
+            "Updated editorial feedback.",
+        )
+        self.assertEqual(self.revision.status, "Rejected")
+
+        self.revision.save.assert_called_once_with(
+            update_fields=["reviewfeedback"]
+        )
+
+        # Verify that the story remains unchanged.
+        self.assertEqual(self.story.status, "Changes Needed")
+        self.assertEqual(self.story.currentrevisionnum, 1)
+        self.assertIsNone(self.story.publishedrevisionnum)
+        self.story.save.assert_not_called()
+
+        # Verify that the updated revision was returned.
+        self.assertIs(result, self.revision)
+
+    @patch("stories.services.story_publication.Story")
+    def test_update_published_story_feedback(self, mock_story):
+        """Update feedback on an already published story"""
+
+        # Simulate a published story with a newer rejected revision.
+        self.story.status = "Published"
+        self.story.publishedrevisionnum = 1
+        self.story.currentrevisionnum = 2
+        self.revision.revisionnum = 2
+
+        mock_story.objects.select_for_update.return_value.get.return_value = (
+            self.story
+        )
+
+        # Update feedback on the newer rejected revision.
+        result = update_review_feedback.__wrapped__(
+            story_id=1,
+            feedback="Include additional perspectives.",
+            expected_revision_num=2,
+        )
+
+        # Verify that the correct revision was retrieved.
+        self.story.revisions.filter.assert_called_once_with(
+            revisionnum=2
+        )
+
+        # Verify that the feedback was updated.
+        self.assertEqual(
+            self.revision.reviewfeedback,
+            "Include additional perspectives.",
+        )
+        self.assertEqual(self.revision.status, "Rejected")
+
+        self.revision.save.assert_called_once_with(
+            update_fields=["reviewfeedback"]
+        )
+
+        # Verify that the existing publication remains unchanged.
+        self.assertEqual(self.story.status, "Published")
+        self.assertEqual(self.story.publishedrevisionnum, 1)
+        self.assertEqual(self.story.currentrevisionnum, 2)
+        self.story.save.assert_not_called()
+
+        self.assertIs(result, self.revision)
+
+    @patch("stories.services.story_publication.Story")
+    def test_clear_review_feedback(self, mock_story):
+        """Clear existing review feedback"""
+
+        mock_story.objects.select_for_update.return_value.get.return_value = (
+            self.story
+        )
+
+        # The update service permits clearing existing feedback.
+        result = update_review_feedback.__wrapped__(
+            story_id=1,
+            feedback="",
+            expected_revision_num=1,
+        )
+
+        # Verify that feedback was cleared without changing the revision status.
+        self.assertEqual(self.revision.reviewfeedback, "")
+        self.assertEqual(self.revision.status, "Rejected")
+
+        self.revision.save.assert_called_once_with(
+            update_fields=["reviewfeedback"]
+        )
+
+        # Verify that the story remains unchanged.
+        self.assertEqual(self.story.status, "Changes Needed")
+        self.assertEqual(self.story.currentrevisionnum, 1)
+        self.assertIsNone(self.story.publishedrevisionnum)
+        self.story.save.assert_not_called()
+
+        self.assertIs(result, self.revision)
+
+    @patch("stories.services.story_publication.Story")
+    def test_update_archived_story_feedback(self, mock_story):
+        """Prevent feedback updates on archived stories"""
+
+        # Simulate an archived story with a rejected revision.
+        self.story.status = "Archived"
+        self.story.publishedrevisionnum = 1
+        self.story.currentrevisionnum = 2
+        self.revision.revisionnum = 2
+
+        mock_story.objects.select_for_update.return_value.get.return_value = (
+            self.story
+        )
+
+        # Verify that archived stories cannot be modified.
+        with self.assertRaisesMessage(
+            ValueError,
+            "Archived stories cannot be modified.",
+        ):
+            update_review_feedback.__wrapped__(
+                story_id=1,
+                feedback="Replacement feedback.",
+                expected_revision_num=2,
+            )
+
+        # Verify that the original state was preserved.
+        self.assertEqual(self.story.status, "Archived")
+        self.assertEqual(self.story.publishedrevisionnum, 1)
+        self.assertEqual(self.story.currentrevisionnum, 2)
+        self.assertEqual(self.revision.status, "Rejected")
+        self.assertEqual(
+            self.revision.reviewfeedback,
+            "Original feedback.",
+        )
+
+        # Verify that the operation stopped before modifying anything.
+        self.story.revisions.filter.assert_not_called()
+        self.story.save.assert_not_called()
+        self.revision.save.assert_not_called()
+
+    @patch("stories.services.story_publication.Story")
+    def test_update_stale_revision_feedback(self, mock_story):
+        """Prevent feedback updates with a stale revision number"""
+
+        # Simulate a newer revision becoming current.
+        self.story.currentrevisionnum = 2
+        self.revision.revisionnum = 2
+
+        mock_story.objects.select_for_update.return_value.get.return_value = (
+            self.story
+        )
+
+        # Attempt to update feedback using the previous revision number.
+        with self.assertRaisesMessage(
+            ValueError,
+            "The current revision has changed. Please review it again.",
+        ):
+            update_review_feedback.__wrapped__(
+                story_id=1,
+                feedback="Stale feedback.",
+                expected_revision_num=1,
+            )
+
+        # Verify that the newer revision remains unchanged.
+        self.assertEqual(self.story.status, "Changes Needed")
+        self.assertEqual(self.story.currentrevisionnum, 2)
+        self.assertIsNone(self.story.publishedrevisionnum)
+        self.assertEqual(self.revision.status, "Rejected")
+        self.assertEqual(
+            self.revision.reviewfeedback,
+            "Original feedback.",
+        )
+
+        self.story.revisions.filter.assert_not_called()
+        self.story.save.assert_not_called()
+        self.revision.save.assert_not_called()
+
+    @patch("stories.services.story_publication.Story")
+    def test_update_feedback_without_expected_revision(self, mock_story):
+        """Prevent feedback updates without an expected revision number"""
+
+        mock_story.objects.select_for_update.return_value.get.return_value = (
+            self.story
+        )
+
+        # Attempt to update feedback without identifying the revision.
+        with self.assertRaisesMessage(
+            ValueError,
+            "The current revision has changed. Please review it again.",
+        ):
+            update_review_feedback.__wrapped__(
+                story_id=1,
+                feedback="Replacement feedback.",
+                expected_revision_num=None,
+            )
+
+        # Verify that the original state was preserved.
+        self.assertEqual(self.story.status, "Changes Needed")
+        self.assertEqual(self.story.currentrevisionnum, 1)
+        self.assertIsNone(self.story.publishedrevisionnum)
+        self.assertEqual(self.revision.status, "Rejected")
+        self.assertEqual(
+            self.revision.reviewfeedback,
+            "Original feedback.",
+        )
+
+        self.story.revisions.filter.assert_not_called()
+        self.story.save.assert_not_called()
+        self.revision.save.assert_not_called()
+
+    @patch("stories.services.story_publication.Story")
+    def test_update_missing_revision_feedback(self, mock_story):
+        """Prevent feedback updates when the current revision is missing"""
+
+        mock_story.objects.select_for_update.return_value.get.return_value = (
+            self.story
+        )
+
+        # Simulate the current revision not being found.
+        self.story.revisions.filter.return_value.first.return_value = None
+
+        with self.assertRaisesMessage(
+            ValueError,
+            "Review feedback can only be updated on Rejected revisions.",
+        ):
+            update_review_feedback.__wrapped__(
+                story_id=1,
+                feedback="Replacement feedback.",
+                expected_revision_num=1,
+            )
+
+        # Verify that the service attempted to retrieve the revision.
+        self.story.revisions.filter.assert_called_once_with(
+            revisionnum=1
+        )
+
+        # Verify that the story remains unchanged.
+        self.assertEqual(self.story.status, "Changes Needed")
+        self.assertEqual(self.story.currentrevisionnum, 1)
+        self.assertIsNone(self.story.publishedrevisionnum)
+
+        self.story.save.assert_not_called()
+        self.revision.save.assert_not_called()
+
+    @patch("stories.services.story_publication.Story")
+    def test_update_non_rejected_revision_feedback(self, mock_story):
+        """Prevent feedback updates on non-Rejected revisions"""
+
+        # Test each revision status that is ineligible for feedback updates.
+        for status in ["Draft", "Published"]:
+            with self.subTest(status=status):
+
+                # Reset mocks to isolate each scenario.
+                self.setUp()
+                mock_story.reset_mock()
+
+                self.revision.status = status
+                self.revision.reviewfeedback = None
+
+                if status == "Published":
+                    self.story.status = "Published"
+                    self.story.publishedrevisionnum = 1
+                else:
+                    self.story.status = "Draft"
+
+                # Record the original story state.
+                original_status = self.story.status
+                original_published = self.story.publishedrevisionnum
+
+                mock_story.objects.select_for_update.return_value.get.return_value = (
+                    self.story
+                )
+
+                # Attempt to update feedback on an ineligible revision.
+                with self.assertRaisesMessage(
+                    ValueError,
+                    "Review feedback can only be updated on Rejected revisions.",
+                ):
+                    update_review_feedback.__wrapped__(
+                        story_id=1,
+                        feedback="Replacement feedback.",
+                        expected_revision_num=1,
+                    )
+
+                # Verify that the original state was preserved.
+                self.assertEqual(self.story.status, original_status)
+                self.assertEqual(
+                    self.story.publishedrevisionnum,
+                    original_published,
+                )
+                self.assertEqual(self.story.currentrevisionnum, 1)
+                self.assertEqual(self.revision.status, status)
+                self.assertIsNone(self.revision.reviewfeedback)
+
+                self.story.save.assert_not_called()
+                self.revision.save.assert_not_called()
+
+    @patch("stories.services.story_publication.Story")
+    def test_update_nonexistent_story_feedback(self, mock_story):
+        """Handle feedback updates on a nonexistent story"""
+
+        # Simulate the requested story not existing.
+        mock_story.objects.select_for_update.return_value.get.side_effect = (
+            Story.DoesNotExist
+        )
+
+        # Verify that the service propagates the exception.
+        with self.assertRaises(Story.DoesNotExist):
+            update_review_feedback.__wrapped__(
+                story_id=999,
+                feedback="Replacement feedback.",
+                expected_revision_num=1,
+            )
+
+        # Verify that the correct story was requested with a lock.
+        mock_story.objects.select_for_update.assert_called_once_with()
+        mock_story.objects.select_for_update.return_value.get.assert_called_once_with(
+            pk=999
+        )
+
+        # Verify that no additional operations occurred.
+        self.story.revisions.filter.assert_not_called()
+        self.story.save.assert_not_called()
+        self.revision.save.assert_not_called()
