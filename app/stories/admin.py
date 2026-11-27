@@ -1536,14 +1536,6 @@ class StoryAdmin(admin.ModelAdmin):
             # original fieldsets shared across Admin requests.
             options = options.copy()
 
-            # Hide the feedback field unless the current revision is rejected.
-            if name == "Current Revision" and not show_feedback:
-                options["fields"] = [
-                    field
-                    for field in options["fields"]
-                    if field != "review_feedback"
-                ]
-
             if name == "Current Revision":
                 fields = list(options["fields"])
 
@@ -1552,7 +1544,11 @@ class StoryAdmin(admin.ModelAdmin):
 
                 # Only display feedback for rejected revisions.
                 if not show_feedback:
-                    fields.remove("review_feedback")
+                    fields = [
+                        field
+                        for field in fields
+                        if field != "review_feedback"
+                    ]
 
                 # Use the read-only display method when editing is prohibited.
                 elif not can_edit:
