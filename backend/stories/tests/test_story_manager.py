@@ -518,3 +518,278 @@ class ArticleLinkingTests(SimpleTestCase):
                 ),
             ],
         )
+
+
+class StoryGenerationTests(SimpleTestCase):
+    """Initial Story Generation"""
+
+    def setUp(self):
+        # Simulate two source articles supplied by an administrator.
+        self.articles = [
+            {
+                "title": "First Article",
+                "link": "https://example.com/first",
+                "text": "First article content.",
+                "publisher_id": 1,
+            },
+            {
+                "title": "Second Article",
+                "link": "https://example.com/second",
+                "text": "Second article content.",
+                "publisher_id": 2,
+            },
+        ]
+
+        # Simulate Gemini's generated response.
+        self.generated = {
+            "headline": "Generated headline",
+            "summary": "Generated neutral summary.",
+        }
+
+        # Create the mock story and initial revision.
+        self.story = MagicMock(spec=Story)
+        self.story.pk = 1
+        self.story.status = "Draft"
+
+        self.revision = MagicMock(spec=StoryRevision)
+        self.revision.revisionnum = 1
+        self.revision.status = "Draft"
+
+        # Mock the transaction context manager.
+        atomic_patcher = patch(
+            "stories.services.story_manager.transaction.atomic"
+        )
+        self.mock_atomic = atomic_patcher.start()
+        self.addCleanup(atomic_patcher.stop)
+
+        # Mock Gemini generation.
+        generate_patcher = patch(
+            "stories.services.story_manager.generate_story"
+        )
+        self.mock_generate = generate_patcher.start()
+        self.addCleanup(generate_patcher.stop)
+
+        # Mock story creation.
+        story_patcher = patch(
+            "stories.services.story_manager.create_story"
+        )
+        self.mock_create_story = story_patcher.start()
+        self.addCleanup(story_patcher.stop)
+
+        # Mock revision creation.
+        revision_patcher = patch(
+            "stories.services.story_manager.create_story_revision"
+        )
+        self.mock_create_revision = revision_patcher.start()
+        self.addCleanup(revision_patcher.stop)
+
+        # Mock article linking.
+        link_patcher = patch(
+            "stories.services.story_manager.link_revision_article"
+        )
+        self.mock_link_article = link_patcher.start()
+        self.addCleanup(link_patcher.stop)
+
+        # Configure successful default responses.
+        self.mock_generate.return_value = self.generated
+        self.mock_create_story.return_value = self.story
+        self.mock_create_revision.return_value = self.revision
+
+    def test_generate_story(self):
+        """Generate and save a new story"""
+
+        result = generate_and_save_story(self.articles)
+
+        # Verify that Gemini received only the source article texts.
+        self.mock_generate.assert_called_once_with(
+            [
+                "First article content.",
+                "Second article content.",
+            ]
+        )
+
+        # Verify that a transaction was opened.
+        self.mock_atomic.assert_called_once_with()
+
+        # Verify that a new story was created.
+        self.mock_create_story.assert_called_once_with()
+
+        # Verify that Gemini's output was used for the initial revision.
+        self.mock_create_revision.assert_called_once_with(
+            self.story,
+            headline="Generated headline",
+            summary="Generated neutral summary.",
+        )
+
+        # Verify that both articles were linked to the initial revision.
+        self.assertEqual(
+            self.mock_link_article.call_args_list,
+            [
+                call(self.story, self.revision, self.articles[0]),
+                call(self.story, self.revision, self.articles[1]),
+            ],
+        )
+
+        # Verify that the newly created story was returned.
+        self.assertIs(result, self.story)
+
+    def test_gemini_generation_failure(self):
+        """Prevent database operations when Gemini generation fails"""
+
+        # Simulate a failed Gemini request.
+        self.mock_generate.side_effect = RuntimeError(
+            "Gemini generation failed."
+        )
+
+        with self.assertRaisesMessage(
+            RuntimeError,
+            "Gemini generation failed.",
+        ):
+            generate_and_save_story(self.articles)
+
+        # Gemini should fail before any transaction is opened.
+        self.mock_generate.assert_called_once()
+        self.mock_atomic.assert_not_called()
+
+        # Verify that no database operations were attempted.
+        self.mock_create_story.assert_not_called()
+        self.mock_create_revision.assert_not_called()
+        self.mock_link_article.assert_not_called()
+
+    def test_story_creation_failure(self):
+        """Stop generation when story creation fails"""
+
+        # Simulate a database error during story creation.
+        self.mock_create_story.side_effect = RuntimeError(
+            "Story creation failed."
+        )
+
+        with self.assertRaisesMessage(
+            RuntimeError,
+            "Story creation failed.",
+        ):
+            generate_and_save_story(self.articles)
+
+        # Gemini should have completed before the failure.
+        self.mock_generate.assert_called_once()
+        self.mock_atomic.assert_called_once_with()
+        self.mock_create_story.assert_called_once_with()
+
+        # Verify that no dependent records were created.
+        self.mock_create_revision.assert_not_called()
+        self.mock_link_article.assert_not_called()
+
+    def test_revision_creation_failure(self):
+        """Stop generation when initial revision creation fails"""
+
+        # Simulate a database error during revision creation.
+        self.mock_create_revision.side_effect = RuntimeError(
+            "Revision creation failed."
+        )
+
+        with self.assertRaisesMessage(
+            RuntimeError,
+            "Revision creation failed.",
+        ):
+            generate_and_save_story(self.articles)
+
+        # Verify that generation and story creation were attempted.
+        self.mock_generate.assert_called_once()
+        self.mock_atomic.assert_called_once_with()
+        self.mock_create_story.assert_called_once_with()
+
+        self.mock_create_revision.assert_called_once_with(
+            self.story,
+            headline="Generated headline",
+            summary="Generated neutral summary.",
+        )
+
+        # No articles should be linked without a successful revision.
+        self.mock_link_article.assert_not_called()
+
+    def test_article_linking_failure(self):
+        """Stop generation when article linking fails"""
+
+        # Simulate a failure while linking the first source article.
+        self.mock_link_article.side_effect = RuntimeError(
+            "Article linking failed."
+        )
+
+        with self.assertRaisesMessage(
+            RuntimeError,
+            "Article linking failed.",
+        ):
+            generate_and_save_story(self.articles)
+
+        # Verify that the story and revision were created first.
+        self.mock_create_story.assert_called_once_with()
+        self.mock_create_revision.assert_called_once()
+
+        # Verify that linking stopped after the first failure.
+        self.mock_link_article.assert_called_once_with(
+            self.story,
+            self.revision,
+            self.articles[0],
+        )
+
+    def test_generation_operation_order(self):
+        """Initial story generation operation order"""
+
+        # Track calls across all mocked components.
+        operations = MagicMock()
+
+        operations.attach_mock(
+            self.mock_generate,
+            "generate",
+        )
+        operations.attach_mock(
+            self.mock_atomic,
+            "atomic",
+        )
+        operations.attach_mock(
+            self.mock_create_story,
+            "create_story",
+        )
+        operations.attach_mock(
+            self.mock_create_revision,
+            "create_revision",
+        )
+        operations.attach_mock(
+            self.mock_link_article,
+            "link_article",
+        )
+
+        generate_and_save_story(self.articles)
+
+        # Verify that Gemini executes before the transaction opens
+        # and all database operations occur inside the transaction.
+        self.assertEqual(
+            operations.mock_calls,
+            [
+                call.generate(
+                    [
+                        "First article content.",
+                        "Second article content.",
+                    ]
+                ),
+                call.atomic(),
+                call.atomic().__enter__(),
+                call.create_story(),
+                call.create_revision(
+                    self.story,
+                    headline="Generated headline",
+                    summary="Generated neutral summary.",
+                ),
+                call.link_article(
+                    self.story,
+                    self.revision,
+                    self.articles[0],
+                ),
+                call.link_article(
+                    self.story,
+                    self.revision,
+                    self.articles[1],
+                ),
+                call.atomic().__exit__(None, None, None),
+            ],
+        )
