@@ -793,3 +793,509 @@ class StoryGenerationTests(SimpleTestCase):
                 call.atomic().__exit__(None, None, None),
             ],
         )
+
+
+class RevisionGenerationTests(SimpleTestCase):
+    """Story Revision Generation"""
+
+    def start_patch(self, target):
+        # Start a patch and automatically remove it after the test.
+        patcher = patch(f"stories.services.story_manager.{target}")
+        mock = patcher.start()
+        self.addCleanup(patcher.stop)
+        return mock
+
+    def setUp(self):
+        # Simulate the updated source articles.
+        self.articles = [
+            {
+                "title": "Updated Article",
+                "link": "https://example.com/updated",
+                "text": "Updated article content.",
+                "publisher_id": 1,
+            },
+            {
+                "title": "Additional Article",
+                "link": "https://example.com/additional",
+                "text": "Additional article content.",
+                "publisher_id": 2,
+            },
+        ]
+
+        # Simulate Gemini's response.
+        self.generated = {
+            "headline": "Updated headline",
+            "summary": "Updated neutral summary.",
+        }
+
+        # Create the story as it exists before Gemini generation.
+        self.story = MagicMock(spec=Story)
+        self.story.pk = 1
+        self.story.status = "Draft"
+        self.story.currentrevisionnum = 1
+        self.story.publishedrevisionnum = None
+
+        # Create a separate mock representing the story retrieved
+        # after Gemini generation and database locking.
+        self.locked_story = MagicMock(spec=Story)
+        self.locked_story.pk = 1
+        self.locked_story.status = "Draft"
+        self.locked_story.currentrevisionnum = 1
+        self.locked_story.publishedrevisionnum = None
+
+        # Create the previous revision.
+        self.previous_revision = MagicMock(spec=StoryRevision)
+        self.previous_revision.revisionnum = 1
+        self.previous_revision.headline = "Original headline"
+        self.previous_revision.summary = "Original summary."
+        self.previous_revision.status = "Draft"
+
+        # Create the new revision.
+        self.new_revision = MagicMock(spec=StoryRevision)
+        self.new_revision.revisionnum = 2
+        self.new_revision.status = "Draft"
+
+        # Mock database models, services, and transaction operations.
+        self.mock_story = self.start_patch("Story")
+        self.mock_revision = self.start_patch("StoryRevision")
+        self.mock_revision_article = self.start_patch("RevisionArticle")
+
+        self.mock_generate = self.start_patch("generate_story")
+        self.mock_create_revision = self.start_patch(
+            "create_story_revision"
+        )
+        self.mock_link_article = self.start_patch(
+            "link_revision_article"
+        )
+        self.mock_cleanup = self.start_patch(
+            "cleanup_unused_article_text"
+        )
+
+        self.mock_atomic = self.start_patch("transaction.atomic")
+        self.mock_on_commit = self.start_patch("transaction.on_commit")
+
+        # Configure successful default database responses.
+        self.mock_story.objects.get.return_value = self.story
+
+        self.mock_story.objects.select_for_update.return_value.get.return_value = (
+            self.locked_story
+        )
+
+        self.mock_revision.objects.get.return_value = (
+            self.previous_revision
+        )
+
+        # Simulate the previous revision's associated article IDs.
+        self.mock_revision_article.objects.filter.return_value.values_list.return_value = [
+            10, 20
+        ]
+
+        self.mock_generate.return_value = self.generated
+        self.mock_create_revision.return_value = self.new_revision
+
+    def assert_no_revision_writes(self):
+        # Shared assertions for unsuccessful generation attempts.
+        self.mock_create_revision.assert_not_called()
+        self.mock_link_article.assert_not_called()
+        self.mock_on_commit.assert_not_called()
+        self.mock_cleanup.assert_not_called()
+        self.story.save.assert_not_called()
+        self.locked_story.save.assert_not_called()
+
+    def test_generate_revision(self):
+        """Generate a new revision of an existing story"""
+
+        result = generate_and_save_revision(1, self.articles)
+
+        # Verify that the existing story and revision were retrieved.
+        self.mock_story.objects.get.assert_called_once_with(
+            storyid=1
+        )
+
+        self.mock_revision.objects.get.assert_called_once_with(
+            storyid_id=1,
+            revisionnum=1,
+        )
+
+        # Verify that Gemini received the new article texts
+        # and the previous revision's content.
+        self.mock_generate.assert_called_once_with(
+            [
+                "Updated article content.",
+                "Additional article content.",
+            ],
+            previous_headline="Original headline",
+            previous_summary="Original summary.",
+        )
+
+        # Verify that a transaction was opened and the story locked.
+        self.mock_atomic.assert_called_once_with()
+
+        self.mock_story.objects.select_for_update.assert_called_once_with()
+
+        self.mock_story.objects.select_for_update.return_value.get.assert_called_once_with(
+            storyid=1
+        )
+
+        # Verify that the previous revision's article IDs were retrieved.
+        self.mock_revision_article.objects.filter.assert_called_once_with(
+            storyid=self.locked_story,
+            revisionnum=1,
+        )
+
+        self.mock_revision_article.objects.filter.return_value.values_list.assert_called_once_with(
+            "articleid_id",
+            flat=True,
+        )
+
+        # Verify that Gemini's output was saved using the locked story.
+        self.mock_create_revision.assert_called_once_with(
+            self.locked_story,
+            headline="Updated headline",
+            summary="Updated neutral summary.",
+        )
+
+        # Verify that both updated source articles were linked.
+        self.assertEqual(
+            self.mock_link_article.call_args_list,
+            [
+                call(
+                    self.locked_story,
+                    self.new_revision,
+                    self.articles[0],
+                ),
+                call(
+                    self.locked_story,
+                    self.new_revision,
+                    self.articles[1],
+                ),
+            ],
+        )
+
+        # Cleanup should be scheduled rather than executed immediately.
+        self.mock_on_commit.assert_called_once()
+        self.mock_cleanup.assert_not_called()
+
+        self.assertIs(result, self.new_revision)
+
+    def test_generate_revision_preserve_publication(self):
+        """Preserve existing publication during revision generation"""
+
+        # Simulate a story whose first revision is published.
+        self.story.status = "Published"
+        self.story.publishedrevisionnum = 1
+
+        self.locked_story.status = "Published"
+        self.locked_story.publishedrevisionnum = 1
+
+        self.previous_revision.status = "Published"
+
+        result = generate_and_save_revision(1, self.articles)
+
+        # Verify that the orchestration function does not modify
+        # the existing publication status or published pointer.
+        self.assertEqual(self.locked_story.status, "Published")
+        self.assertEqual(self.locked_story.publishedrevisionnum, 1)
+
+        self.assertEqual(self.previous_revision.status, "Published")
+        self.previous_revision.save.assert_not_called()
+
+        self.locked_story.save.assert_not_called()
+
+        self.mock_create_revision.assert_called_once_with(
+            self.locked_story,
+            headline="Updated headline",
+            summary="Updated neutral summary.",
+        )
+
+        self.assertIs(result, self.new_revision)
+
+    def test_generate_revision_nonexistent_story(self):
+        """Handle revision generation for a nonexistent story"""
+
+        self.mock_story.objects.get.side_effect = Story.DoesNotExist
+
+        with self.assertRaises(Story.DoesNotExist):
+            generate_and_save_revision(999, self.articles)
+
+        self.mock_story.objects.get.assert_called_once_with(
+            storyid=999
+        )
+
+        # Generation should stop before retrieving a revision.
+        self.mock_revision.objects.get.assert_not_called()
+        self.mock_generate.assert_not_called()
+        self.mock_atomic.assert_not_called()
+
+        self.assert_no_revision_writes()
+
+    def test_generate_revision_archived_story(self):
+        """Prevent revision generation for an archived story"""
+
+        self.story.status = "Archived"
+        self.story.publishedrevisionnum = 1
+
+        with self.assertRaisesMessage(
+            ValueError,
+            "Archived stories must be restored before generating revisions.",
+        ):
+            generate_and_save_revision(1, self.articles)
+
+        # Archived stories should be rejected before calling Gemini.
+        self.mock_revision.objects.get.assert_not_called()
+        self.mock_generate.assert_not_called()
+        self.mock_atomic.assert_not_called()
+
+        self.assert_no_revision_writes()
+
+    def test_generate_revision_missing_previous_revision(self):
+        """Prevent generation when the previous revision is missing"""
+
+        self.mock_revision.objects.get.side_effect = (
+            StoryRevision.DoesNotExist
+        )
+
+        with self.assertRaises(StoryRevision.DoesNotExist):
+            generate_and_save_revision(1, self.articles)
+
+        self.mock_revision.objects.get.assert_called_once_with(
+            storyid_id=1,
+            revisionnum=1,
+        )
+
+        # Gemini cannot generate an update without the previous revision.
+        self.mock_generate.assert_not_called()
+        self.mock_atomic.assert_not_called()
+
+        self.assert_no_revision_writes()
+
+    def test_revision_gemini_failure(self):
+        """Prevent revision writes when Gemini generation fails"""
+
+        self.mock_generate.side_effect = RuntimeError(
+            "Gemini generation failed."
+        )
+
+        with self.assertRaisesMessage(
+            RuntimeError,
+            "Gemini generation failed.",
+        ):
+            generate_and_save_revision(1, self.articles)
+
+        self.mock_generate.assert_called_once()
+
+        # No transaction or story lock should be requested.
+        self.mock_atomic.assert_not_called()
+        self.mock_story.objects.select_for_update.assert_not_called()
+
+        self.assert_no_revision_writes()
+
+    def test_story_archived_during_generation(self):
+        """Prevent revision creation when a story is archived during generation"""
+
+        # The initial story is eligible, but its locked state is archived.
+        self.story.status = "Published"
+        self.story.publishedrevisionnum = 1
+
+        self.locked_story.status = "Archived"
+        self.locked_story.publishedrevisionnum = 1
+
+        with self.assertRaisesMessage(
+            ValueError,
+            "The story was archived during revision generation.",
+        ):
+            generate_and_save_revision(1, self.articles)
+
+        # Gemini completed before the archived status was discovered.
+        self.mock_generate.assert_called_once()
+        self.mock_atomic.assert_called_once_with()
+        self.mock_story.objects.select_for_update.assert_called_once_with()
+
+        # No new revision should be created.
+        self.mock_revision_article.objects.filter.assert_not_called()
+        self.assert_no_revision_writes()
+
+    def test_current_revision_changed_during_generation(self):
+        """Prevent revision creation when the current revision changes"""
+
+        # Simulate another administrator creating a revision
+        # while Gemini is generating content.
+        self.locked_story.currentrevisionnum = 2
+
+        with self.assertRaisesMessage(
+            ValueError,
+            "The current revision changed during generation.",
+        ):
+            generate_and_save_revision(1, self.articles)
+
+        self.mock_generate.assert_called_once()
+        self.mock_atomic.assert_called_once_with()
+        self.mock_story.objects.select_for_update.assert_called_once_with()
+
+        # The newer revision must not be overwritten.
+        self.assertEqual(self.locked_story.currentrevisionnum, 2)
+
+        self.mock_revision_article.objects.filter.assert_not_called()
+        self.assert_no_revision_writes()
+
+    def test_generated_revision_creation_failure(self):
+        """Stop generation when the new revision cannot be created"""
+
+        self.mock_create_revision.side_effect = RuntimeError(
+            "Revision creation failed."
+        )
+
+        with self.assertRaisesMessage(
+            RuntimeError,
+            "Revision creation failed.",
+        ):
+            generate_and_save_revision(1, self.articles)
+
+        self.mock_create_revision.assert_called_once()
+
+        # No articles should be linked to a failed revision.
+        self.mock_link_article.assert_not_called()
+        self.mock_on_commit.assert_not_called()
+        self.mock_cleanup.assert_not_called()
+
+    def test_generated_revision_article_linking_failure(self):
+        """Stop revision generation when article linking fails"""
+
+        self.mock_link_article.side_effect = RuntimeError(
+            "Article linking failed."
+        )
+
+        with self.assertRaisesMessage(
+            RuntimeError,
+            "Article linking failed.",
+        ):
+            generate_and_save_revision(1, self.articles)
+
+        self.mock_create_revision.assert_called_once()
+
+        # Linking should stop after the first failure.
+        self.mock_link_article.assert_called_once_with(
+            self.locked_story,
+            self.new_revision,
+            self.articles[0],
+        )
+
+        # Cleanup must not be scheduled after a failed operation.
+        self.mock_on_commit.assert_not_called()
+        self.mock_cleanup.assert_not_called()
+
+    def test_revision_cleanup_callback(self):
+        """Schedule cleanup using the previous revision's article IDs"""
+
+        generate_and_save_revision(1, self.articles)
+
+        self.mock_on_commit.assert_called_once()
+
+        # Retrieve the callback passed to transaction.on_commit().
+        callback = self.mock_on_commit.call_args.args[0]
+
+        # Cleanup should not have executed yet.
+        self.mock_cleanup.assert_not_called()
+
+        # Manually execute the callback to simulate a successful commit.
+        callback()
+
+        # Only the previous revision's articles should be examined.
+        self.mock_cleanup.assert_called_once_with([10, 20])
+
+    def test_revision_generation_operation_order(self):
+        """Story revision generation operation order"""
+
+        # Track calls across the individual mocked components.
+        operations = MagicMock()
+
+        operations.attach_mock(
+            self.mock_story.objects.get,
+            "get_story",
+        )
+        operations.attach_mock(
+            self.mock_revision.objects.get,
+            "get_revision",
+        )
+        operations.attach_mock(
+            self.mock_generate,
+            "generate",
+        )
+        operations.attach_mock(
+            self.mock_atomic,
+            "atomic",
+        )
+        operations.attach_mock(
+            self.mock_story.objects.select_for_update,
+            "lock_story",
+        )
+        operations.attach_mock(
+            self.mock_revision_article.objects.filter,
+            "get_articles",
+        )
+        operations.attach_mock(
+            self.mock_create_revision,
+            "create_revision",
+        )
+        operations.attach_mock(
+            self.mock_link_article,
+            "link_article",
+        )
+        operations.attach_mock(
+            self.mock_on_commit,
+            "on_commit",
+        )
+
+        generate_and_save_revision(1, self.articles)
+
+        # Retrieve the scheduled callback for the expected call sequence.
+        callback = self.mock_on_commit.call_args.args[0]
+
+        # Verify the complete operation sequence.
+        self.assertEqual(
+            operations.mock_calls,
+            [
+                call.get_story(storyid=1),
+                call.get_revision(
+                    storyid_id=1,
+                    revisionnum=1,
+                ),
+                call.generate(
+                    [
+                        "Updated article content.",
+                        "Additional article content.",
+                    ],
+                    previous_headline="Original headline",
+                    previous_summary="Original summary.",
+                ),
+                call.atomic(),
+                call.atomic().__enter__(),
+                call.lock_story(),
+                call.lock_story().get(storyid=1),
+                call.get_articles(
+                    storyid=self.locked_story,
+                    revisionnum=1,
+                ),
+                call.get_articles().values_list(
+                    "articleid_id",
+                    flat=True,
+                ),
+                call.create_revision(
+                    self.locked_story,
+                    headline="Updated headline",
+                    summary="Updated neutral summary.",
+                ),
+                call.link_article(
+                    self.locked_story,
+                    self.new_revision,
+                    self.articles[0],
+                ),
+                call.link_article(
+                    self.locked_story,
+                    self.new_revision,
+                    self.articles[1],
+                ),
+                call.on_commit(callback),
+                call.atomic().__exit__(None, None, None),
+            ],
+        )
