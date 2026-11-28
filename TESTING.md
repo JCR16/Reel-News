@@ -72,7 +72,7 @@ app/
 | `test_story_deletion.py` | Deletion eligibility, related records, and orphaned articles |
 | `test_story_manager.py` | Story creation, revision generation, article linking, and regeneration |
 | `test_story_publication.py` | Revision approval, rejection, and review feedback |
-| `test_views.py` | Story feed, detail pages, bookmark states, and URL routing |
+| `test_views.py` | Public story visibility, revision selection, sources, bookmarks, and URL routing |
 
 ## Testing Approach
 
